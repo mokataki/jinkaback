@@ -1,23 +1,24 @@
-import { Controller, Post, UseInterceptors, UploadedFile, Body } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { multerConfig } from '../common/multer.config';
-import { AuthService } from './auth.service';
-import { Express } from 'express';
+// src/auth/auth.controller.ts
+
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { LoginUserDto } from '../users/dto/login-user.dto';
+import { CreateUserDto } from '../users/dto/create-user.dto';
+import {AuthService} from "./auth.service";
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private authService: AuthService) {}
 
+  // User Registration (sign up)
   @Post('register')
-  @UseInterceptors(FileInterceptor('photo', multerConfig))
-  async register(
-      @Body() data: any,
-      @UploadedFile() photo: Express.Multer.File,
-  ) {
-    const user = {
-      ...data,
-      photo: `/uploads/${photo.filename}`,
-    };
-    return this.authService.register(user);
+  async register(@Body() createUserDto: CreateUserDto) {
+    return this.authService.register(createUserDto);
+  }
+
+  // User Login (sign in)
+  @Post('login')
+  @HttpCode(HttpStatus.OK) // Respond with 200 OK status code
+  async login(@Body() loginDto: LoginUserDto) {
+    return this.authService.login(loginDto);
   }
 }

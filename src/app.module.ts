@@ -1,14 +1,33 @@
+// src/app.module.ts
+
 import { Module } from '@nestjs/common';
-import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
-import { ProductsModule } from './products/products.module';
-import { OrdersModule } from './orders/orders.module';
-import { PaymentsModule } from './payments/payments.module';
-import { ShippingModule } from './shipping/shipping.module';
-import { AdminModule } from './admin/admin.module';
+import { UsersController } from './users/users.controller';
+import { UsersService } from './users/users.service';
+import { AuthService } from './auth/auth.service';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import {PrismaService} from "../prisma/prisma.service";
+import {JwtStrategy} from "./auth/strategies/jwt.strategy";
+import {JwtAuthGuard} from "./auth/guards/jwt-auth.guard.";
+import {RolesGuard} from "./auth/guards/roles.guard";
+
 
 @Module({
-  imports: [AuthModule, UsersModule, ProductsModule, OrdersModule, PaymentsModule, ShippingModule, AdminModule],
-
+  imports: [
+    PassportModule,
+    JwtModule.register({
+      secret: 'SECRET_KEY', // Should be changed to a more secure secret
+      signOptions: { expiresIn: '1h' },
+    }),
+  ],
+  controllers: [UsersController],
+  providers: [
+    UsersService,
+    PrismaService,
+    AuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
 })
 export class AppModule {}
