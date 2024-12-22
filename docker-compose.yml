@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+
+  postgres:
+    image: postgres:17.2
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=jinkabackpostgres
+      - POSTGRES_DB=jinkaback
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - '7788:7788'
+
+volumes:
+  postgres:
