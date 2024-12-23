@@ -6,6 +6,7 @@ import * as argon2 from 'argon2'; // Hashing library
 import { UpdateUserDto } from './dto/update-user.dto';
 import {PrismaService} from "../../prisma/prisma.service";
 import {ChangePasswordDto} from "./dto/change-password.dto";
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -13,7 +14,7 @@ export class UsersService {
 
   // Create a new user
   async create(createUserDto: CreateUserDto) {
-    const hashedPassword = await argon2.hash(createUserDto.password);
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
     return await this.prisma.user.create({
       data: {
         ...createUserDto,
@@ -28,14 +29,47 @@ export class UsersService {
       where: { email },
     });
   }
-
-  // Validate password by comparing it
-  async validatePassword(email: string, password: string) {
-    const user = await this.findByEmail(email);
-    if (user && await argon2.verify(user.password, password)) {
-      return user; // Return the user if password matches
+  // Get user profile by ID
+  async getProfile(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      throw new Error('User not found');
     }
-    return null; // Return null if user doesn't exist or passwords don't match
+    return { id: user.id, email: user.email, role: user.role };
+  }
+
+  // Validate the password by comparing the hashed password
+  async validatePassword(email: string, password: string) {
+    // Find user by email
+    console.log('Checking email:', email);
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+    console.log('Found user:', user);
+
+    // If user does not exist, return null
+    if (!user) {
+      return null;
+    }
+
+    // Compare the provided password with the stored hashed password
+    const isPasswordValid = await bcrypt.compare(user.password, password);
+    console.log('Password valid:', password);
+    console.log('Password valid:', user.password);
+
+
+    if (isPasswordValid) {
+      return null;
+    }
+
+    // If the password matches, return the user (excluding sensitive data like password)
+    return {
+      email: user.email,
+      id: user.id,
+      role: user.role,
+    };
   }
 
   // Update user data

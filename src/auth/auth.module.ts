@@ -7,11 +7,13 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { PassportModule } from '@nestjs/passport';
 import {JwtStrategy} from "./strategies/jwt.strategy";
+import {PrismaModule} from "../../prisma/prisma.module";
 
 @Module({
   imports: [
     UsersModule, // Import UsersModule to interact with UsersService
     PassportModule, // Import PassportModule to handle authentication
+    PrismaModule,
     JwtModule.register({
       secret: 'SECRET_KEY', // Use a secret for signing JWT tokens
       signOptions: { expiresIn: '1h' }, // Set token expiration

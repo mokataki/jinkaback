@@ -10,10 +10,14 @@ import {PrismaService} from "../prisma/prisma.service";
 import {JwtStrategy} from "./auth/strategies/jwt.strategy";
 import {JwtAuthGuard} from "./auth/guards/jwt-auth.guard.";
 import {RolesGuard} from "./auth/guards/roles.guard";
+import {AuthModule} from "./auth/auth.module";
+import {UsersModule} from "./users/users.module";
 
 
 @Module({
   imports: [
+    AuthModule,
+    UsersModule,
     PassportModule,
     JwtModule.register({
       secret: 'SECRET_KEY', // Should be changed to a more secure secret

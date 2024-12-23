@@ -1,23 +1,26 @@
-// src/auth/jwt.strategy.ts
-
+// src/auth/strategies/jwt.strategy.ts
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
-import { User } from '@prisma/client';
-import {AuthService} from "../auth.service";
-import {JwtPayload} from "./jwt-payload.interface";
+import {PrismaService} from "../../../prisma/prisma.service";
+import {JwtPayload} from "./jwt-payload.interface"; // Ensure you have the correct JwtPayload type
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-    constructor(private authService: AuthService) {
+    constructor(private prisma: PrismaService) {
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-            secretOrKey: 'SECRET_KEY', // Should use a more secure key
+            secretOrKey: 'SECRET_KEY', // Use the same secret as when signing the JWT
         });
     }
 
-    async validate(payload: JwtPayload): Promise<User> {
-        // Use the payload (which includes user email, sub, and role) to get the user
-        return this.authService.validateUser(payload.email, payload.sub.toString());
+    async validate(payload: JwtPayload) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: payload.sub },
+        });
+        if (!user) {
+            throw new Error('User not found');
+        }
+        return { id: user.id, email: user.email, role: user.role }; // Add the role to the request object
     }
 }

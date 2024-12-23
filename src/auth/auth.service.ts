@@ -3,20 +3,22 @@
 import {Injectable, ConflictException, UnauthorizedException, BadRequestException} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import { LoginUserDto } from '../users/dto/login-user.dto';
+import { LoginUserDto } from './dto/login-user.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import * as argon2 from 'argon2';
 import {JwtPayload} from "./strategies/jwt-payload.interface";
-
+import {PrismaService} from "../../prisma/prisma.service";
+import * as bcrypt from 'bcrypt';
 @Injectable()
 export class AuthService {
   constructor(
+      private prisma: PrismaService,
       private usersService: UsersService,
       private jwtService: JwtService,
   ) {}
 
   // Validate user (used in JwtStrategy to validate JWT payload)
-  async validateUser(email: string, userId: string) {
+  async validate(email: string, userId: string) {
     const user = await this.usersService.findByEmail(email);
     if (user && user.id.toString() === userId) {
       return user; // Return the user if found and userId matches
@@ -37,12 +39,13 @@ export class AuthService {
     }
 
     // Hash password and create user
-    const hashedPassword = await argon2.hash(createUserDto.password);
+    const hashedPassword = await bcrypt.hash(createUserDto.password,10);
     // Create user
     const user = await this.usersService.create({
       ...createUserDto,
       password: hashedPassword,
     });
+
 
     // Generate JWT token
     const payload: JwtPayload = { email: user.email, sub: user.id, role: user.role };
@@ -53,17 +56,23 @@ export class AuthService {
 
   // Login user (validate credentials and return JWT token)
   async login(loginDto: LoginUserDto) {
-    const user = await this.usersService.validatePassword(loginDto.email, loginDto.password);
+    // Validate the user by checking the email and password
+
+    const user = await this.usersService.validatePassword(
+        loginDto.email,
+        loginDto.password,
+    );
+
+    // If user is not found or the password is incorrect, throw an UnauthorizedException
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-
-    // Generate JWT token
+    // Generate a JWT token for the valid user
     const payload: JwtPayload = { email: user.email, sub: user.id, role: user.role };
     const access_token = this.jwtService.sign(payload);
 
-    return { access_token };
+    // Return the token to the client
+    return { access_token };  // Add user details if needed in the response
   }
-
 
 }
