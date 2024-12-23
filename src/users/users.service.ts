@@ -1,92 +1,110 @@
-// src/users/users.service.ts
-
-import { Injectable } from '@nestjs/common';
+import {BadRequestException, Injectable} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import * as argon2 from 'argon2'; // Hashing library
-import { UpdateUserDto } from './dto/update-user.dto';
-import {PrismaService} from "../../prisma/prisma.service";
-import {ChangePasswordDto} from "./dto/change-password.dto";
 import * as bcrypt from 'bcrypt';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { promises as fs } from 'fs';
+import { extname, join } from 'path';
+import * as argon from 'argon2'
+
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  // Create a new user
   async create(createUserDto: CreateUserDto) {
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    return await this.prisma.user.create({
+    const hashedPassword = await argon.hash(createUserDto.password);
+
+    return this.prisma.user.create({
       data: {
         ...createUserDto,
-        password: hashedPassword, // Hash password
+        password: hashedPassword,  // Hashed password is stored here
       },
     });
   }
-
-  // Find a user by email
-  async findByEmail(email: string) {
-    return await this.prisma.user.findUnique({
-      where: { email },
-    });
-  }
-  // Get user profile by ID
   async getProfile(userId: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
+
     if (!user) {
       throw new Error('User not found');
     }
-    return { id: user.id, email: user.email, role: user.role };
+
+    // Return only necessary data (for example, excluding sensitive info like password)
+    return { id: user.id, email: user.email, role: user.role, photo: user.photo };
+  }
+  async findByEmail(email: string) {
+    return this.prisma.user.findUnique({ where: { email } });
   }
 
-  // Validate the password by comparing the hashed password
   async validatePassword(email: string, password: string) {
-    // Find user by email
-    console.log('Checking email:', email);
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-    });
-    console.log('Found user:', user);
+    const user = await this.prisma.user.findUnique({ where: { email } });
 
-    // If user does not exist, return null
     if (!user) {
       return null;
     }
 
-    // Compare the provided password with the stored hashed password
-    const isPasswordValid = await bcrypt.compare(user.password, password);
-    console.log('Password valid:', password);
-    console.log('Password valid:', user.password);
+    console.log(`Input Password: '${password}'`);
+    console.log(`Stored Hash: '${user.password}'`);
+    console.log(`Hash Length: ${user.password.length}`);
 
-
-    if (isPasswordValid) {
-      return null;
+    const isPasswordValid = await argon.verify(user.password, password);
+    console.log(isPasswordValid)
+    if (!isPasswordValid) {
+      throw new BadRequestException("Wrong Password!")
     }
-
-    // If the password matches, return the user (excluding sensitive data like password)
     return {
       email: user.email,
       id: user.id,
-      role: user.role,
+      role: user.role
     };
   }
 
-  // Update user data
   async update(id: number, updateUserDto: UpdateUserDto) {
-    return await this.prisma.user.update({
+    return this.prisma.user.update({
       where: { id },
       data: updateUserDto,
     });
   }
 
-  // Change user's password
   async changePassword(id: number, newPassword: string) {
-    // Ensure that 'newPassword' is a string, then hash it
-    const hashedPassword = await argon2.hash(newPassword);
-    return await this.prisma.user.update({
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+    return this.prisma.user.update({
       where: { id },
       data: { password: hashedPassword },
+    });
+  }
+
+  async handlePhotoUpload(userId: number, file: Express.Multer.File) {
+    try {
+      const photoPath = await this.savePhotoToDisk(file);
+      console.log('uploading photo:', {photoPath});
+      return this.updatePhotoInDatabase(userId, photoPath);
+
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      throw new Error('Photo upload failed');
+    }
+  }
+
+  private async savePhotoToDisk(file: Express.Multer.File): Promise<string> {
+    const uploadsDir = './uploads/photos';
+    await fs.mkdir(uploadsDir, { recursive: true });
+
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const filename = `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`;
+    const filePath = join(uploadsDir, filename);
+
+    await fs.writeFile(filePath, file.buffer);
+    return join('uploads', 'photos', filename);
+  }
+
+  private async updatePhotoInDatabase(userId: number, photoPath: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { photo: photoPath },
     });
   }
 }

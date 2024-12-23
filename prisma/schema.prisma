@@ -20,15 +20,40 @@ model User {
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
-  name        String
-  description String
-  price       Float
-  inventory   Int
-  photos      Photo[] // Relation with Photo model
-  isDeleted   Boolean   @default(false) // For soft deletion
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               Int        @id @default(autoincrement())
+  name             String
+  shortDescription String
+  longDescription  String
+  price            Float
+  inventory        Int
+  Category         Category[] // Updated relation
+  photos           Photo[] // Relation with Photo model
+  colors           Color[] // Updated relation
+  brandId          Int?
+  brand            Brand?     @relation(fields: [brandId], references: [id]) // Relation with a single Brand
+  isDeleted        Boolean    @default(false) // For soft deletion
+  isPublished      Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model Category {
+  id                  Int       @id @default(autoincrement())
+  categoryName        String
+  categoryDescription String
+  products            Product[] // One-to-Many relation with Product
+}
+
+model Brand {
+  id        Int       @id @default(autoincrement())
+  brandName String
+  products  Product[] // One-to-Many relation with Product
+}
+
+model Color {
+  id       Int       @id @default(autoincrement())
+  color    String
+  products Product[] // One-to-Many relation with Product
 }
 
 model Photo {
@@ -60,18 +85,17 @@ model Order {
 }
 
 model OrderItem {
-  id         String  @id @default(uuid())
-  productId  String
-  orderId    String
-  quantity   Int
-  price      Float
-  order      Order   @relation(fields: [orderId], references: [id])
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt  // Track updates for audit purposes
+  id        String   @id @default(uuid())
+  productId String
+  orderId   String
+  quantity  Int
+  price     Float
+  order     Order    @relation(fields: [orderId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // Track updates for audit purposes
 }
 
-
-model ShippingMethod {
+model Shipping {
   id           Int    @id @default(autoincrement())
   name         String
   price        Float

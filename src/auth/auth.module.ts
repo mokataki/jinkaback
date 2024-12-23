@@ -11,6 +11,7 @@ import {PrismaModule} from "../../prisma/prisma.module";
 
 @Module({
   imports: [
+
     UsersModule, // Import UsersModule to interact with UsersService
     PassportModule, // Import PassportModule to handle authentication
     PrismaModule,

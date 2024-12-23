@@ -5,10 +5,11 @@ import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { LoginUserDto } from './dto/login-user.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
-import * as argon2 from 'argon2';
 import {JwtPayload} from "./strategies/jwt-payload.interface";
 import {PrismaService} from "../../prisma/prisma.service";
-import * as bcrypt from 'bcrypt';
+import * as argon from 'argon2'
+
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -33,19 +34,14 @@ export class AuthService {
     if (existingUser) {
       throw new ConflictException('User with this email already exists.');
     }
-    // Validate the password strength (optional, based on your requirements)
+
+    // Validate password strength
     if (createUserDto.password.length < 8) {
       throw new BadRequestException('Password must be at least 8 characters long.');
     }
 
-    // Hash password and create user
-    const hashedPassword = await bcrypt.hash(createUserDto.password,10);
-    // Create user
-    const user = await this.usersService.create({
-      ...createUserDto,
-      password: hashedPassword,
-    });
-
+    // Create user and hash the password in the service
+    const user = await this.usersService.create(createUserDto);  // Hashing happens in the service
 
     // Generate JWT token
     const payload: JwtPayload = { email: user.email, sub: user.id, role: user.role };
@@ -54,19 +50,21 @@ export class AuthService {
     return { access_token, user };
   }
 
+
   // Login user (validate credentials and return JWT token)
   async login(loginDto: LoginUserDto) {
     // Validate the user by checking the email and password
 
+    // @ts-ignore
     const user = await this.usersService.validatePassword(
         loginDto.email,
-        loginDto.password,
-    );
-
+        loginDto.password
+        );
     // If user is not found or the password is incorrect, throw an UnauthorizedException
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
+
     // Generate a JWT token for the valid user
     const payload: JwtPayload = { email: user.email, sub: user.id, role: user.role };
     const access_token = this.jwtService.sign(payload);
