@@ -12,6 +12,11 @@ import {JwtAuthGuard} from "./auth/guards/jwt-auth.guard.";
 import {RolesGuard} from "./auth/guards/roles.guard";
 import {AuthModule} from "./auth/auth.module";
 import {UsersModule} from "./users/users.module";
+import { ProductsModule } from './products/products.module';
+import { CategoriesModule } from './categories/categories.module';
+import { BrandsModule } from './brands/brands.module';
+import { ColorsModule } from './colors/colors.module';
+import { PhotosModule } from './photos/photos.module';
 
 
 @Module({
@@ -23,6 +28,11 @@ import {UsersModule} from "./users/users.module";
       secret: 'SECRET_KEY', // Should be changed to a more secure secret
       signOptions: { expiresIn: '1h' },
     }),
+    ProductsModule,
+    CategoriesModule,
+    BrandsModule,
+    ColorsModule,
+    PhotosModule,
   ],
   controllers: [UsersController],
   providers: [

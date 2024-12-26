@@ -7,8 +7,6 @@ import { LoginUserDto } from './dto/login-user.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import {JwtPayload} from "./strategies/jwt-payload.interface";
 import {PrismaService} from "../../prisma/prisma.service";
-import * as argon from 'argon2'
-
 
 @Injectable()
 export class AuthService {

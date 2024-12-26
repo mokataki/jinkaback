@@ -19,58 +19,74 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
+// schema.prisma
+
 model Product {
   id               Int        @id @default(autoincrement())
   name             String
   shortDescription String
   longDescription  String
-  price            Float
-  inventory        Int
-  Category         Category[] // Updated relation
-  photos           Photo[] // Relation with Photo model
-  colors           Color[] // Updated relation
+  price            Float?
+  inventory        Int?
+  Category         Category[] @relation("ProductCategories")
+  photos           Photo[]    @relation("ProductPhotos")
+  colors           Color[] // Relation with Color model
   brandId          Int?
-  brand            Brand?     @relation(fields: [brandId], references: [id]) // Relation with a single Brand
-  isDeleted        Boolean    @default(false) // For soft deletion
+  brand            Brand?     @relation(fields: [brandId], references: [id])
+  isDeleted        Boolean    @default(false)
   isPublished      Boolean    @default(true)
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 }
 
 model Category {
-  id                  Int       @id @default(autoincrement())
-  categoryName        String
+  id                  Int        @id @default(autoincrement())
+  categoryName        String     @unique
   categoryDescription String
-  products            Product[] // One-to-Many relation with Product
+  isDeleted           Boolean    @default(false)
+  parentId            Int?
+  parent              Category?  @relation("CategoryToChildren", fields: [parentId], references: [id])
+  children            Category[] @relation("CategoryToChildren")
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  products            Product[]  @relation("ProductCategories")
 }
 
 model Brand {
   id        Int       @id @default(autoincrement())
-  brandName String
-  products  Product[] // One-to-Many relation with Product
+  brandName String    @unique
+  isDeleted Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
 }
 
 model Color {
-  id       Int       @id @default(autoincrement())
-  color    String
-  products Product[] // One-to-Many relation with Product
+  id        Int       @id @default(autoincrement())
+  color     String    @unique
+  isDeleted Boolean   @default(false) // Soft delete for colors
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[] // One-to-Many relation with Product
 }
 
 model Photo {
-  id        Int     @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   url       String // URL of the photo
-  productId Int
-  product   Product @relation(fields: [productId], references: [id])
+  productId Int // Foreign key for Product
+  product   Product  @relation("ProductPhotos", fields: [productId], references: [id], onDelete: Cascade)
+  isDeleted Boolean  @default(false) // Soft delete for photos
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Order {
-  id      String @id @default(uuid())
-  userId  Int?
-  user    User?  @relation(fields: [userId], references: [id])
-  email   String
-  name    String
-  address String
-
+  id              String      @id @default(uuid())
+  userId          Int?
+  user            User?       @relation(fields: [userId], references: [id])
+  email           String
+  name            String
+  address         String
   totalAmount     Float
   shippingMethod  String
   trackingCode    String
@@ -79,18 +95,18 @@ model Order {
   paymentMethod   String
   totalCost       Float // New field to store total cost
   items           OrderItem[]
-
-  status    String   @default("Pending")
-  createdAt DateTime @default(now())
+  status          String      @default("Pending")
+  createdAt       DateTime    @default(now())
 }
 
 model OrderItem {
   id        String   @id @default(uuid())
-  productId String
+  productId Int // Reference to Product
+  // product   Product  @relation(fields: [productId], references: [id])
   orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
   quantity  Int
   price     Float
-  order     Order    @relation(fields: [orderId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt // Track updates for audit purposes
 }
