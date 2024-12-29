@@ -1,0 +1,13 @@
+export enum PaymentStatus {
+  PENDING = 'PENDING',
+  PAID = 'PAID',
+  FAILED = 'FAILED',
+}
+export enum OrderStatus {
+    PENDING = 'PENDING',
+    PROCESSING = 'PROCESSING',
+    SHIPPED = 'SHIPPED',
+    COMPLETED = 'COMPLETED',
+    CANCELED = 'CANCELED',
+    RETURNED = 'RETURNED',
+}

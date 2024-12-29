@@ -17,6 +17,15 @@ import { CategoriesModule } from './categories/categories.module';
 import { BrandsModule } from './brands/brands.module';
 import { ColorsModule } from './colors/colors.module';
 import { PhotosModule } from './photos/photos.module';
+import { TagsModule } from './tags/tags.module';
+import { ArticlesModule } from './articles/articles.module';
+import { ArticleCategorisModule } from './article-categoris/article-categoris.module';
+import { OrderModule } from './order/order.module';
+import { OrderDetailModule } from './order-detail/order-detail.module';
+import { ShippingModule } from './shipping/shipping.module';
+import { PaymentModule } from './payment/payment.module';
+import { ZarinpalService } from './zarinpal/zarinpal.service';
+import { ZarinpalModule } from './zarinpal/zarinpal.module';
 
 
 @Module({
@@ -33,6 +42,14 @@ import { PhotosModule } from './photos/photos.module';
     BrandsModule,
     ColorsModule,
     PhotosModule,
+    TagsModule,
+    ArticlesModule,
+    ArticleCategorisModule,
+    OrderModule,
+    OrderDetailModule,
+    ShippingModule,
+    PaymentModule,
+    ZarinpalModule,
   ],
   controllers: [UsersController],
   providers: [
@@ -42,6 +59,7 @@ import { PhotosModule } from './photos/photos.module';
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,
+    ZarinpalService,
   ],
 })
 export class AppModule {}

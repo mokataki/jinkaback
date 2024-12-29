@@ -1,13 +1,6 @@
-import {
-    IsString,
-    IsInt,
-    IsOptional,
-    IsArray,
-    IsNumber,
-    IsNotEmpty, IsBoolean,
-} from 'class-validator';
+import {IsNotEmpty, IsOptional, IsArray, IsString, IsNumber, IsPositive, IsInt, IsBoolean} from 'class-validator';
 
-export class CreateProductDto {
+export class CreateArticleDto {
     @IsString()
     @IsNotEmpty()
     name: string;
@@ -30,7 +23,7 @@ export class CreateProductDto {
 
     @IsArray()
     @IsOptional()
-    categoryIds?: number[];
+    articleCategoryIds?: number[];
 
     @IsArray()
     @IsOptional()
@@ -51,6 +44,4 @@ export class CreateProductDto {
     @IsBoolean()
     @IsOptional()
     isPublished?: boolean;
-
-
 }

@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Import enums from enums.prisma
+
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
@@ -21,22 +23,57 @@ model User {
 
 // schema.prisma
 
+model ArticleCategory {
+  id                  Int               @id @default(autoincrement()) // Primary key
+  categoryName        String            @unique // Unique name of the category
+  categoryDescription String // Description of the category
+  isDeleted           Boolean           @default(false) // Soft delete flag
+  parentId            Int? // Optional parent category ID for hierarchical relationships
+  parent              ArticleCategory?  @relation("CategoryToChildren", fields: [parentId], references: [id]) // Parent category relation
+  children            ArticleCategory[] @relation("CategoryToChildren") // Child categories relation
+  createdAt           DateTime          @default(now()) // Creation timestamp
+  updatedAt           DateTime          @updatedAt // Update timestamp
+  articles            Article[]         @relation("ArticleCategories") // Many-to-many relation with articles
+}
+
+model Article {
+  id               Int               @id @default(autoincrement()) // Primary key
+  name             String // Name of the article
+  shortDescription String // Short description of the article
+  longDescription  String // Long description of the article
+  price            Float? // Price of the article (optional)
+  inventory        Int? // Inventory count (optional)
+  categoryIds      Int[] // Array of category IDs to associate with the article
+  categories       ArticleCategory[] @relation("ArticleCategories") // Many-to-many relation with categories
+  photos           Photo[]           @relation("ArticlePhotos") // Photos related to the article
+  brandId          Int?
+  brand            Brand?            @relation(fields: [brandId], references: [id])
+  colors           Color[]
+  tags             tags[]            @relation("ArticleTags")
+  isDeleted        Boolean           @default(false) // Soft delete flag
+  isPublished      Boolean           @default(true) // Published status
+  createdAt        DateTime          @default(now()) // Creation timestamp
+  updatedAt        DateTime          @updatedAt // Update timestamp
+}
+
 model Product {
-  id               Int        @id @default(autoincrement())
+  id               Int           @id @default(autoincrement())
   name             String
   shortDescription String
   longDescription  String
   price            Float?
   inventory        Int?
-  Category         Category[] @relation("ProductCategories")
-  photos           Photo[]    @relation("ProductPhotos")
+  Category         Category[]    @relation("ProductCategories")
+  photos           Photo[]       @relation("ProductPhotos")
   colors           Color[] // Relation with Color model
   brandId          Int?
-  brand            Brand?     @relation(fields: [brandId], references: [id])
-  isDeleted        Boolean    @default(false)
-  isPublished      Boolean    @default(true)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  brand            Brand?        @relation(fields: [brandId], references: [id])
+  isDeleted        Boolean       @default(false)
+  isPublished      Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  tags             tags[]        @relation("ProductTags") // Many-to-many relation with tags
+  OrderDetail      OrderDetail[]
 }
 
 model Category {
@@ -58,62 +95,154 @@ model Brand {
   isDeleted Boolean   @default(false)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  products  Product[]
+  products  Product[] // Relation with Product model
+  aarticles Article[]
 }
 
 model Color {
   id        Int       @id @default(autoincrement())
   color     String    @unique
-  isDeleted Boolean   @default(false) // Soft delete for colors
+  isDeleted Boolean   @default(false) // Soft delete flag for colors
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  products  Product[] // One-to-Many relation with Product
+  products  Product[] // One-to-many relation with Product model
+  Article   Article[]
+  articleId Int?
 }
 
 model Photo {
   id        Int      @id @default(autoincrement())
   url       String // URL of the photo
-  productId Int // Foreign key for Product
-  product   Product  @relation("ProductPhotos", fields: [productId], references: [id], onDelete: Cascade)
-  isDeleted Boolean  @default(false) // Soft delete for photos
+  productId Int? // Foreign key to Product model
+  product   Product? @relation("ProductPhotos", fields: [productId], references: [id], onDelete: Cascade)
+  isDeleted Boolean  @default(false) // Soft delete flag for photos
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  articleId Int?
+  Article   Article? @relation("ArticlePhotos", fields: [articleId], references: [id])
+}
+
+model tags {
+  id              Int       @id @default(autoincrement())
+  name            String    @unique
+  metaTitle       String?
+  metaDescription String?
+  parentId        Int?
+  parent          tags?     @relation("TagHierarchy", fields: [parentId], references: [id])
+  children        tags[]    @relation("TagHierarchy")
+  isDeleted       Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  products        Product[] @relation("ProductTags") // Many-to-many relation with products
+  articles        Article[] @relation("ArticleTags")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
 }
 
 model Order {
-  id              String      @id @default(uuid())
-  userId          Int?
-  user            User?       @relation(fields: [userId], references: [id])
-  email           String
-  name            String
-  address         String
-  totalAmount     Float
-  shippingMethod  String
-  trackingCode    String
-  customerId      String
-  shippingAddress String
-  paymentMethod   String
-  totalCost       Float // New field to store total cost
-  items           OrderItem[]
-  status          String      @default("Pending")
-  createdAt       DateTime    @default(now())
+  id            Int           @id @default(autoincrement())
+  orderNumber   String        @unique
+  userId        Int?
+  user          User?         @relation(fields: [userId], references: [id])
+  guestInfo     GuestInfo? // No need to specify fields/references here
+  guestInfoId   Int?
+  status        OrderStatus   @default(PENDING)
+  totalAmount   Float         @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  isDeleted     Boolean       @default(false)
+  orderDetails  OrderDetail[]
+  shipping      Shipping?
+  shippingId    Int?
+  payment       Payment?
+  paymentId     Int?
+  paymentStatus PaymentStatus
 }
 
-model OrderItem {
-  id        String   @id @default(uuid())
-  productId Int // Reference to Product
-  // product   Product  @relation(fields: [productId], references: [id])
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id])
-  quantity  Int
-  price     Float
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt // Track updates for audit purposes
+model GuestInfo {
+  id      Int    @id @default(autoincrement())
+  name    String
+  email   String
+  phone   String
+  address String
+  orderId Int    @unique
+  order   Order  @relation(fields: [orderId], references: [id]) // Specify fields/references here
+}
+
+model OrderDetail {
+  id         Int      @id @default(autoincrement())
+  orderId    Int
+  order      Order    @relation(fields: [orderId], references: [id])
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id]) // This should be on the Product model side
+  quantity   Int      @default(1)
+  unitPrice  Float    @default(0)
+  totalPrice Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Shipping {
-  id           Int    @id @default(autoincrement())
-  name         String
-  price        Float
-  deliveryTime String
+  id             Int            @id @default(autoincrement())
+  orderId        Int            @unique
+  order          Order          @relation(fields: [orderId], references: [id]) // Specify fields/references here
+  address        String
+  city           String
+  state          String
+  postalCode     String
+  country        String
+  shippingMethod String?
+  cost           Float          @default(0)
+  status         ShippingStatus @default(PENDING)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 }
+
+model Payment {
+  id            Int           @id @default(autoincrement())
+  orderId       Int           @unique
+  order         Order         @relation(fields: [orderId], references: [id]) // Specify fields/references here
+  paymentMethod PaymentMethod @default(CREDIT_CARD)
+  paymentStatus PaymentStatus @default(PENDING)
+  transactionId String?
+  amount        Float         @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+//.enums
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  COMPLETED
+  CANCELED
+  RETURNED
+}
+
+enum ShippingStatus {
+  PENDING
+  IN_TRANSIT
+  DELIVERED
+  CANCELED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  PAYPAL
+  BANK_TRANSFER
+  CASH_ON_DELIVERY
+}
+
+// enum PaymentStatus {
+//   PENDING
+//   COMPLETED
+//   FAILED
+//   REFUNDED
+// }

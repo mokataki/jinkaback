@@ -7,4 +7,7 @@ export class CreatePhotoDto {
 
     @IsInt()
     productId: number;
+
+    @IsInt()
+    articleId: number;
 }
