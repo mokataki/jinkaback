@@ -21,11 +21,9 @@ import { TagsModule } from './tags/tags.module';
 import { ArticlesModule } from './articles/articles.module';
 import { ArticleCategorisModule } from './article-categoris/article-categoris.module';
 import { OrderModule } from './order/order.module';
-import { OrderDetailModule } from './order-detail/order-detail.module';
-import { ShippingModule } from './shipping/shipping.module';
 import { PaymentModule } from './payment/payment.module';
-import { ZarinpalService } from './zarinpal/zarinpal.service';
-import { ZarinpalModule } from './zarinpal/zarinpal.module';
+import { CartModule } from './cart/cart.module';
+import { ShippingModule } from './shipping/shipping.module';
 
 
 @Module({
@@ -45,11 +43,10 @@ import { ZarinpalModule } from './zarinpal/zarinpal.module';
     TagsModule,
     ArticlesModule,
     ArticleCategorisModule,
-    OrderModule,
-    OrderDetailModule,
+    OrderModule, 
     ShippingModule,
     PaymentModule,
-    ZarinpalModule,
+    CartModule,
   ],
   controllers: [UsersController],
   providers: [
@@ -59,7 +56,6 @@ import { ZarinpalModule } from './zarinpal/zarinpal.module';
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,
-    ZarinpalService,
   ],
 })
 export class AppModule {}

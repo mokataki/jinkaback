@@ -1,21 +1,21 @@
-import { Controller, Post, Body, Param } from '@nestjs/common';
-import { PaymentService } from './payment.service';
+import { Controller, Post, Body } from '@nestjs/common';
 import { CreatePaymentDto } from './dto/create-payment.dto';
-import { UpdatePaymentStatusDto } from './dto/update-payment.dto';
+import { VerifyPaymentDto } from './dto/verify-payment.dto';
+import {PaymentService} from "./payment.service";
 
 @Controller('payment')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
-  // Handle creating a payment
-  @Post('create/:orderId')
-  async createPayment(@Param('orderId') orderId: number, @Body() createPaymentDto: CreatePaymentDto) {
-    return this.paymentService.createPayment(orderId, createPaymentDto);
+  @Post('request')
+  async requestPayment(@Body() createPaymentDto: CreatePaymentDto) {
+    const { amount, callbackUrl, description, email, mobile } = createPaymentDto;
+    return this.paymentService.requestPayment(amount, callbackUrl, description, email, mobile);
   }
 
-  // Handle updating the payment status
-  @Post('update-status/:paymentId')
-  async updatePaymentStatus(@Param('paymentId') paymentId: number, @Body() updatePaymentStatusDto: UpdatePaymentStatusDto) {
-    return this.paymentService.updatePaymentStatus(paymentId, updatePaymentStatusDto);
+  @Post('verify')
+  async verifyPayment(@Body() verifyPaymentDto: VerifyPaymentDto) {
+    const { amount, authority } = verifyPaymentDto;
+    return this.paymentService.verifyPayment(amount, authority);
   }
 }

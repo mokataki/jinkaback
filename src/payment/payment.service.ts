@@ -1,54 +1,60 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { ZarinpalService } from '../zarinpal/zarinpal.service';
-import { CreatePaymentDto } from './dto/create-payment.dto';
-import { UpdatePaymentStatusDto } from './dto/update-payment.dto';
+import * as ZarinpalCheckout from 'zarinpal-checkout';
+
+import { InternalServerErrorException } from '@nestjs/common';
 
 @Injectable()
 export class PaymentService {
-  constructor(
-      private prisma: PrismaService,
-      private zarinpalService: ZarinpalService
-  ) {}
+  private zarinpal:any;
 
-  // Create a payment and initiate payment request with Zarinpal
-  async createPayment(orderId: number, createPaymentDto: CreatePaymentDto) {
-    const { amount, guestInfo } = createPaymentDto;
+  constructor() {
+    try {
+      // Make sure you are using the correct Merchant ID and Sandbox flag
+      this.zarinpal = ZarinpalCheckout.create('your-merchant-id', false); // Replace with actual Merchant ID
 
-    // Use Zarinpal to create payment request
-    const callbackUrl = `http://localhost:3000/payment/verify?orderId=${orderId}`;
-    const paymentUrl = await this.zarinpalService.createPaymentRequest(
-        amount.toString(),
-        callbackUrl,
-        'Payment for Order',
-        guestInfo.email,
-        guestInfo.phone
-    );
-
-    // Create a payment record in the database
-    const payment = await this.prisma.payment.create({
-      data: {
-        orderId,
-        paymentMethod: createPaymentDto.paymentMethod,
-        amount,
-        paymentStatus: 'PENDING', // Initial status
-        transactionId: createPaymentDto.transactionId,
-      },
-    });
-
-    return { paymentUrl, payment };
+      console.log('ZarinPal API initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize ZarinPal API', error);
+      throw new InternalServerErrorException('Failed to initialize ZarinPal API');
+    }
   }
 
-  // Update payment status (after verification from Zarinpal)
-  async updatePaymentStatus(paymentId: number, updatePaymentStatusDto: UpdatePaymentStatusDto) {
-    const { status } = updatePaymentStatusDto;
+  async requestPayment(amount: number, callbackUrl: string, description: string, email: string, mobile: string) {
+    try {
+      const response = await this.zarinpal.PaymentRequest({
+        Amount: amount.toString(), // مبلغ به تومان
+        CallbackURL: callbackUrl,
+        Description: description,
+        Email: email,
+        Mobile: mobile,
+      });
 
-    // Update the payment status in the database
-    const updatedPayment = await this.prisma.payment.update({
-      where: { id: paymentId },
-      data: { paymentStatus: status },
-    });
+      if (response.status === 100) {
+        return response.url; // لینک پرداخت
+      } else {
+        throw new Error('Failed to initiate payment');
+      }
+    } catch (error) {
+      console.error('Payment Request Failed:', error);
+      throw new InternalServerErrorException('Payment request failed');
+    }
+  }
 
-    return updatedPayment;
+  async verifyPayment(amount: number, authority: string) {
+    try {
+      const response = await this.zarinpal.PaymentVerification({
+        Amount: amount.toString(),
+        Authority: authority,
+      });
+
+      if (response.status === 100) {
+        return { refId: response.RefID, status: response.status };
+      } else {
+        throw new Error('Payment verification failed');
+      }
+    } catch (error) {
+      console.error('Payment Verification Failed:', error);
+      throw new InternalServerErrorException('Payment verification failed');
+    }
   }
 }

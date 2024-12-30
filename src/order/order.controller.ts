@@ -1,28 +1,17 @@
-import { Controller, Post, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param } from '@nestjs/common';
 import { OrderService } from './order.service';
-import { CreateOrderDto } from './dto/create-order.dto';
 
-@Controller('order')
+@Controller('orders')
 export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
-  // Endpoint to create order and initiate payment
-  @Post('create')
-  async createOrder(
-      @Body() createOrderDto: CreateOrderDto,
-      @Query('userId') userId: number
-  ) {
-    const result = await this.orderService.createOrder(createOrderDto, userId);
-    return result;
+  @Post(':userId')
+  createOrder(@Param('userId') userId: number) {
+    return this.orderService.createOrder(userId);
   }
 
-  // Endpoint to verify payment after user returns from ZarinPal
-  @Post('verify-payment')
-  async verifyPayment(
-      @Query('orderId') orderId: number,
-      @Query('Authority') authority: string
-  ) {
-    const result = await this.orderService.verifyPayment(orderId, authority);
-    return result;
+  @Get(':userId')
+  getOrders(@Param('userId') userId: number) {
+    return this.orderService.getOrders(userId);
   }
 }

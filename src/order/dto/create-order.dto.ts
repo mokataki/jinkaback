@@ -3,13 +3,10 @@ import {
     IsString,
     IsEmail,
     IsNotEmpty,
-    IsArray,
     IsPhoneNumber
 } from 'class-validator';
 import {CreatePaymentDto} from "../../payment/dto/create-payment.dto";
 import {CreateShippingDto} from "../../shipping/dto/create-shipping.dto";
-import {CreateOrderDetailDto} from "../../order-detail/dto/order-detail.dto";
-
 export class CreateGuestInfoDto {
     @IsString()
     @IsNotEmpty()
@@ -35,14 +32,20 @@ export class CreateOrderDto {
     @IsNotEmpty()
     guestInfo: CreateGuestInfoDto;
 
-    @IsArray()
-    @IsNotEmpty()
-    orderDetails: CreateOrderDetailDto[];
+
+    guestInfoId?: number;  // Optional guest info
 
     @IsNotEmpty()
     shipping: CreateShippingDto;
 
     @IsNotEmpty()
     payment: CreatePaymentDto;
+
+    orderDetails: {
+        productId: number;
+        quantity: number;
+        unitPrice: number;
+        totalPrice: number;
+    }[];  // Array of order details
 }
 
