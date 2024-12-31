@@ -10,16 +10,17 @@ datasource db {
 // Import enums from enums.prisma
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String
-  photo     String?
-  role      String   @default("USER")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  orders    Order[]
-  cart      Cart?
+  id              Int              @id @default(autoincrement())
+  email           String           @unique
+  password        String
+  name            String
+  photo           String?
+  role            String           @default("USER")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  orders          Order[]
+  cart            Cart?
+  shippingAddress ShippingAddress?
 }
 
 // schema.prisma
@@ -166,21 +167,24 @@ model CartItem {
   cartId    Int
   productId Int
   quantity  Int
-  cart      Cart    @relation(fields: [cartId], references: [id])
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
 
   @@unique([cartId, productId])
 }
 
 model Order {
-  id        Int         @id @default(autoincrement())
-  userId    Int
-  total     Float
-  status    String      @default("PENDING")
-  user      User        @relation(fields: [userId], references: [id])
-  items     OrderItem[]
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id                Int             @id @default(autoincrement())
+  userId            Int?
+  guestId           String? // Make this nullable for guest users
+  totalPrice        Float
+  status            String          @default("PENDING")
+  items             OrderItem[]
+  shippingAddress   ShippingAddress @relation(fields: [shippingAddressId], references: [id])
+  shippingAddressId Int
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  User              User?           @relation(fields: [userId], references: [id])
 }
 
 model OrderItem {
@@ -191,6 +195,36 @@ model OrderItem {
   price     Float
   order     Order   @relation(fields: [orderId], references: [id])
   product   Product @relation(fields: [productId], references: [id])
+}
+
+model ShippingAddress {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id])
+  guestId    String?
+  fullName   String
+  address    String
+  city       String
+  state      String
+  postalCode String
+  country    String
+  phone      String
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  Order      Order[]
+
+  @@unique([userId])
+}
+
+model ShippingCost {
+  id             Int      @id @default(autoincrement())
+  weight         Float // Weight in kg (or any unit of measurement)
+  destination    String // Destination, such as "USA", "Europe", etc.
+  shippingMethod String // Shipping method, like "standard", "express"
+  cost           Float // Shipping cost
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 //...................................................................

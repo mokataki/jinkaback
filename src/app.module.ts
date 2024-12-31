@@ -28,6 +28,7 @@ import { ShippingModule } from './shipping/shipping.module';
 
 @Module({
   imports: [
+    ShippingModule,
     AuthModule,
     UsersModule,
     PassportModule,

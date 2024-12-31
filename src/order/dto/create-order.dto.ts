@@ -1,51 +1,19 @@
-import {
-    IsInt,
-    IsString,
-    IsEmail,
-    IsNotEmpty,
-    IsPhoneNumber
-} from 'class-validator';
-import {CreatePaymentDto} from "../../payment/dto/create-payment.dto";
-import {CreateShippingDto} from "../../shipping/dto/create-shipping.dto";
-export class CreateGuestInfoDto {
-    @IsString()
-    @IsNotEmpty()
-    name: string;
+// src/order/dto/create-order.dto.ts
+import {IsInt, IsOptional, IsString, IsNotEmpty, IsNumber} from 'class-validator';
 
-    @IsEmail()
-    @IsNotEmpty()
-    email: string;
-
-    @IsPhoneNumber()
-    @IsNotEmpty()
-    phone: string;
-
-    @IsString()
-    @IsNotEmpty()
-    address: string;
-}
 export class CreateOrderDto {
     @IsInt()
     @IsNotEmpty()
-    userId?: number;
+    shippingAddressId: number; // شناسه آدرس حمل و نقل
 
-    @IsNotEmpty()
-    guestInfo: CreateGuestInfoDto;
+    @IsOptional()
+    @IsString()
+    guestId?: string | null; // شناسه مهمان (اختیاری برای کاربران مهمان)
 
+    @IsInt()
+    @IsOptional()
+    userId?: number; // شناسه کاربر (برای سفارش‌هایی که توسط کاربران وارد شده انجام می‌شود)
 
-    guestInfoId?: number;  // Optional guest info
-
-    @IsNotEmpty()
-    shipping: CreateShippingDto;
-
-    @IsNotEmpty()
-    payment: CreatePaymentDto;
-
-    orderDetails: {
-        productId: number;
-        quantity: number;
-        unitPrice: number;
-        totalPrice: number;
-    }[];  // Array of order details
+    @IsNumber()
+    shippingCostId?: number; // This is the ID of the shipping cost to be applied
 }
-
