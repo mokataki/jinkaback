@@ -22,6 +22,11 @@ export class UsersService {
     });
   }
 
+  // Count the total number of users
+  async countUsers(): Promise<number> {
+    return this.prisma.user.count(); // Replace `user` with the actual model name in your Prisma schema
+  }
+
   async getProfile(userId: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

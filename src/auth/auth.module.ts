@@ -3,7 +3,7 @@
 import { Module } from '@nestjs/common';
 import { UsersModule } from '../users/users.module'; // Import the Users module to interact with user data
 import { JwtModule } from '@nestjs/jwt';
-import { AuthController } from './auth.controller';
+import {AdminController, AuthController} from './auth.controller';
 import { AuthService } from './auth.service';
 import { PassportModule } from '@nestjs/passport';
 import {JwtStrategy} from "./strategies/jwt.strategy";
@@ -20,7 +20,7 @@ import {PrismaModule} from "../../prisma/prisma.module";
       signOptions: { expiresIn: '1h' }, // Set token expiration
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController,AdminController],
   providers: [AuthService, JwtStrategy], // Add AuthService and JwtStrategy
   exports: [AuthService], // Export AuthService if you need to use it elsewhere
 })
