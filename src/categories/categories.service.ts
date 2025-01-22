@@ -3,32 +3,57 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { Category } from '@prisma/client';
+import slugify from '@sindresorhus/slugify'; // Import slugify
 
 @Injectable()
 export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Helper function to generate slug from category name
+  private generateSlug(categoryName: string): string {
+    if (!categoryName) {
+      throw new BadRequestException('نام دسته‌بندی باید برای تولید slug وارد شود.');
+    }
+    return slugify(categoryName);
+  }
+
+  // Create a new category
   async create(createCategoryDto: CreateCategoryDto) {
     const { categoryName, categoryDescription, parentId, children } = createCategoryDto;
 
-    // Check if a category with the same name already exists (you can add other checks too)
+    // Generate slug from categoryName using slugify
+    const slug = this.generateSlug(categoryName);
+
+    // Check if a category with the same name already exists
     const existingCategory = await this.prisma.category.findUnique({
       where: { categoryName },
     });
     if (existingCategory) {
-      throw new BadRequestException('Category with this name already exists.');
+      throw new BadRequestException('دسته‌بندی با این نام قبلاً موجود است.');
+    }
+
+    // Check if a category with the same slug already exists (optional)
+    const existingSlugCategory = await this.prisma.category.findUnique({
+      where: { slug },
+    });
+    if (existingSlugCategory) {
+      throw new BadRequestException('دسته‌بندی با این slug قبلاً موجود است.');
     }
 
     // Create the main category
     const category = await this.prisma.category.create({
-      data: { categoryName, categoryDescription, parentId },
+      data: {
+        categoryName,
+        categoryDescription,
+        parentId: parentId || null,  // Ensure parentId can be null
+        slug, // Use generated slug
+      },
     });
 
     // If children exist, create them recursively
     if (children && children.length > 0) {
       await Promise.all(
           children.map((child) => {
-            // Pass the child data to create them recursively
             return this.create({
               ...child,
               parentId: category.id, // Ensure child categories have the parentId set to the parent category's id
@@ -40,13 +65,16 @@ export class CategoriesService {
     return this.findOne(category.id); // Return the newly created category with children
   }
 
-  async findDescendants(categoryId: number): Promise<Category[]> {
+  // Find descendants of a category by identifier
+  async findDescendants(categoryIdentifier: string | number): Promise<Category[]> {
+    const category = await this.findCategoryByIdentifier(categoryIdentifier);
+
     const descendants = await this.prisma.category.findMany({
-      where: { parentId: categoryId },
+      where: { parentId: category.id },
     });
 
     if (descendants.length === 0) {
-      throw new NotFoundException('No descendants found for this category');
+      throw new NotFoundException('هیچ زیرمجموعه‌ای برای این دسته‌بندی پیدا نشد.');
     }
 
     const allDescendants = [];
@@ -59,56 +87,94 @@ export class CategoriesService {
     return allDescendants;
   }
 
+  // Find all categories
   async findAll() {
     return this.prisma.category.findMany({
       include: { children: true },
     });
   }
 
-  async findOne(id: number) {
+  // Find category by ID or slug
+  async findCategoryByIdentifier(identifier: string | number) {
+    const isNumeric = !isNaN(Number(identifier));
+
+    if (isNumeric) {
+      return this.findOneById(parseInt(identifier as string));
+    } else {
+      return this.findBySlug(identifier as string);
+    }
+  }
+
+  // Find category by ID
+  async findOneById(id: number) {
     const category = await this.prisma.category.findUnique({
       where: { id },
       include: { children: true },
     });
 
     if (!category) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundException('دسته‌بندی پیدا نشد.');
     }
     return category;
   }
+
+  // Find category by slug
+  async findBySlug(slug: string) {
+    const category = await this.prisma.category.findUnique({
+      where: { slug },
+      include: { children: true },
+    });
+
+    if (!category) {
+      throw new NotFoundException('دسته‌بندی پیدا نشد.');
+    }
+    return category;
+  }
+
+  // Find category by id or slug
+  async findOne(identifier: string | number) {
+    return this.findCategoryByIdentifier(identifier);
+  }
+
+  // Find a child category by parentId and childId
   async findChild(parentId: number, childId: number) {
-    // Find the parent category
     const parentCategory = await this.prisma.category.findUnique({
       where: { id: parentId },
-      include: { children: true }, // Include children in the result
+      include: { children: true },
     });
 
     if (!parentCategory) {
-      throw new Error('Parent category not found');
+      throw new NotFoundException('دسته‌بندی والد پیدا نشد.');
     }
 
-    // Find the specific child category from the parent's children
     const childCategory = parentCategory.children.find((child) => child.id === childId);
 
     if (!childCategory) {
-      throw new Error('Child category not found under the specified parent');
+      throw new NotFoundException('دسته‌بندی فرزند پیدا نشد.');
     }
 
     return childCategory;
   }
 
-  async update(id: number, updateCategoryDto: UpdateCategoryDto) {
+  // Update category by ID or slug
+  async update(identifier: string, updateCategoryDto: UpdateCategoryDto) {
+    const isNumeric = !isNaN(Number(identifier)); // Check if the identifier is numeric
     const { children, ...data } = updateCategoryDto;
 
-    // Find the existing category
-    const category = await this.findOne(id);
+    let category;
+    if (isNumeric) {
+      category = await this.findOneById(parseInt(identifier)); // If numeric, find by ID
+    } else {
+      category = await this.findBySlug(identifier); // If slug, find by slug
+    }
+
     if (!category) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundException('دسته‌بندی پیدا نشد.');
     }
 
     // Update the category
     await this.prisma.category.update({
-      where: { id },
+      where: { id: category.id },
       data,
     });
 
@@ -116,32 +182,29 @@ export class CategoriesService {
     if (children && children.length > 0) {
       await Promise.all(
           children.map(async (child) => {
-            // Check if child is of type UpdateCategoryDto (i.e., has 'id' property)
-            if ((child as UpdateCategoryDto).id && typeof (child as UpdateCategoryDto).id === 'number') {
-              // Update existing child if 'id' is available
-              await this.update((child as UpdateCategoryDto).id, child as UpdateCategoryDto);
+            if ((child as UpdateCategoryDto).id) {
+              await this.update((child as UpdateCategoryDto).id.toString(), child as UpdateCategoryDto); // Ensure ID is passed as string
             } else {
-              // Create new child if 'id' is not available (this is for new categories)
-              await this.create({ ...child, parentId: id });
+              await this.create({ ...child, parentId: category.id });
             }
           }),
       );
     }
 
-    return this.findOne(id); // Return the updated category with children
+    return this.findOne(category.id); // Return the updated category
   }
 
-  async remove(id: number) {
-    const category = await this.findOne(id);
+  // Remove a category by identifier
+  async remove(identifier: string | number) {
+    const category = await this.findCategoryByIdentifier(identifier);
 
     if (!category) {
-      throw new NotFoundException('Category does not exist!');
+      throw new NotFoundException('دسته‌بندی یافت نشد.');
     }
 
     // Perform a soft delete by setting `isDeleted` to true
-    return this.prisma.category.update({
-      where: { id },
-      data: { isDeleted: true },
+    return this.prisma.category.delete({
+      where: { id: category.id },
     });
   }
 }

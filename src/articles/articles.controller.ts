@@ -1,30 +1,37 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Query, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UploadedFiles,
+  UseInterceptors,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { ArticlesService } from './articles.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { ArticleCategoriesService } from '../article-categoris/article-categoris.service';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { photoUploadConfig } from '../utils/file-upload.util';
 
 @Controller('articles')
 export class ArticlesController {
-  constructor(
-      private readonly articlesService: ArticlesService,
-      private readonly articleCategoriesService: ArticleCategoriesService,
-  ) {}
+  constructor(private readonly articlesService: ArticlesService) {}
 
-  // Create a new article
+  // Create a new article with photos
   @Post()
-  @UseInterceptors(FileFieldsInterceptor([
-    { name: 'photos', maxCount: 5 },  // Adjust file handling as needed
-  ]))
+  @UseInterceptors(FilesInterceptor('photos', 5, photoUploadConfig))
   async create(
       @Body() createArticleDto: CreateArticleDto,
-      @UploadedFiles() files: { photos?: Express.Multer.File[] },
+      @UploadedFiles() photos: Array<Express.Multer.File>,
   ) {
-    return this.articlesService.create(createArticleDto, files?.photos || []);
+    return this.articlesService.create(createArticleDto, photos);
   }
 
-  // Get all articles with pagination and filtering
+  // Get all articles with filtering, pagination, and sorting
   @Get()
   async findAll(
       @Query('page') page: number = 1,
@@ -50,49 +57,47 @@ export class ArticlesController {
     );
   }
 
-  // Get a single article by ID
-  @Get(':id')
-  async findOne(@Param('id') id: number) {
-    return this.articlesService.findOne(id);
+  // Get a single article by ID or slug
+  @Get(':identifier')
+  async findOne(@Param('identifier') identifier: string) {
+    return this.articlesService.findArticleByIdentifier(identifier);
   }
 
-  // Update an existing article
-  @Put(':id')
-  @UseInterceptors(FileFieldsInterceptor([
-    { name: 'photos', maxCount: 5 },  // Adjust file handling as needed
-  ]))
+  // Update an existing article with new data and photos
+  @Patch(':identifier')
+  @UseInterceptors(FilesInterceptor('photos', 5, photoUploadConfig))
   async update(
-      @Param('id') id: number,
+      @Param('identifier') identifier: string,
       @Body() updateArticleDto: UpdateArticleDto,
-      @UploadedFiles() files: { photos?: Express.Multer.File[] },
+      @UploadedFiles() photos: Array<Express.Multer.File>,
   ) {
-    return this.articlesService.update(id, updateArticleDto, files?.photos || []);
+    return this.articlesService.update(identifier, updateArticleDto, photos);
   }
 
-  // Delete all photos of an article by article ID
-  @Delete(':id/photos')
-  async deleteAllPhotos(@Param('id') articleId: number) {
-    return this.articlesService.deleteAllPhotosByArticleId(articleId);
+  // Soft delete an article and its associated photos
+  @Delete(':identifier')
+  async deleteArticleAndPhotos(@Param('identifier') identifier: string) {
+    return this.articlesService.deleteArticleAndPhotos(identifier);
   }
 
-  // Delete a specific photo of an article
+  // Delete a specific photo from an article
   @Delete(':articleId/photos/:photoId')
   async deletePhoto(
-      @Param('articleId') articleId: number,
-      @Param('photoId') photoId: number,
+      @Param('articleId', ParseIntPipe) articleId: number,
+      @Param('photoId', ParseIntPipe) photoId: number,
   ) {
     return this.articlesService.deletePhoto(articleId, photoId);
   }
 
-  // Delete an article and its associated photos
-  @Delete(':id')
-  async deleteArticleAndPhotos(@Param('id') articleId: number) {
-    return this.articlesService.deleteArticleAndPhotos(articleId);
+  // Delete all photos for an article
+  @Delete(':identifier/photos')
+  async deleteAllPhotos(@Param('identifier') identifier: string) {
+    return this.articlesService.deleteAllPhotosByArticleIdentifier(identifier);
   }
 
-  // Get all photos for a specific article
-  @Get(':id/photos')
-  async getPhotosByArticleId(@Param('id') articleId: number) {
+  // Get all photos for an article by its ID
+  @Get(':articleId/photos')
+  async getPhotosByArticleId(@Param('articleId', ParseIntPipe) articleId: number) {
     return this.articlesService.getPhotosByArticleId(articleId);
   }
 }

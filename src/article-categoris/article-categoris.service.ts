@@ -1,53 +1,121 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ArticleCategory } from '@prisma/client';
-import {CreateCategoryDto} from "../categories/dto/create-category.dto";
-import {UpdateCategoryDto} from "../categories/dto/update-category.dto";
+import { CreateCategoryDto } from "../categories/dto/create-category.dto";
+import { UpdateCategoryDto } from "../categories/dto/update-category.dto";
+import slugify from "@sindresorhus/slugify";
 
 @Injectable()
 export class ArticleCategoriesService {
-  private updateCategoryDto: any;
   constructor(private readonly prisma: PrismaService) {}
 
+  // تابع برای تولید slug از نام دسته بندی
+  private generateSlug(categoryName: string): string {
+    if (!categoryName) {
+      throw new BadRequestException('نام دسته‌بندی باید برای تولید slug وارد شود.');
+    }
+    return slugify(categoryName);
+  }
+
+  // بررسی اینکه آیا شناسه عددی (ID) است یا متنی (slug)
+  private isNumeric(identifier: string): boolean {
+    return !isNaN(Number(identifier));
+  }
+
+  // ایجاد یک دسته‌بندی جدید
   async create(createCategoryDto: CreateCategoryDto) {
     const { categoryName, categoryDescription, parentId, children } = createCategoryDto;
+    const slug = this.generateSlug(categoryName);
 
-    // Check if a category with the same name already exists
+    // بررسی اینکه آیا دسته‌بندی با همان نام قبلاً وجود دارد یا خیر
     const existingCategory = await this.prisma.articleCategory.findUnique({
       where: { categoryName },
     });
     if (existingCategory) {
-      throw new BadRequestException('Category with this name already exists.');
+      throw new BadRequestException('دسته‌بندی با این نام قبلاً موجود است.');
     }
 
-    // Create the main category
+    // بررسی اینکه آیا دسته‌بندی با همان slug قبلاً وجود دارد یا خیر
+    const existingSlugCategory = await this.prisma.articleCategory.findUnique({
+      where: { slug },
+    });
+    if (existingSlugCategory) {
+      throw new BadRequestException('دسته‌بندی با این slug قبلاً موجود است.');
+    }
+
+    // ایجاد دسته‌بندی اصلی با slug معتبر
     const category = await this.prisma.articleCategory.create({
-      data: { categoryName, categoryDescription, parentId },
+      data: {
+        categoryName,
+        categoryDescription,
+        parentId: parentId ?? null,
+        slug,
+      },
     });
 
-    // If children exist, create them recursively
+    // اگر دسته‌های فرعی (children) وجود داشته باشند، به صورت بازگشتی ایجاد می‌شوند
     if (children && children.length > 0) {
-      await Promise.all(
-          children.map((child) => {
-            // Pass the child data to create them recursively
-            return this.create({
-              ...child,
-              parentId: category.id, // Ensure child categories have the parentId set to the parent category's id
-            });
-          }),
-      );
+      await this.createChildren(category.id, children);
     }
 
-    return this.findOne(category.id); // Return the newly created category with children
+    return this.findOne(category.id); // بازگشت دسته‌بندی جدید به همراه زیرمجموعه‌ها
   }
 
+  // تابع برای ایجاد دسته‌های فرعی به صورت بازگشتی
+  private async createChildren(parentId: number, children: CreateCategoryDto[]) {
+    await Promise.all(
+        children.map((child) => {
+          return this.create({
+            ...child,
+            parentId, // مشخص کردن parentId برای دسته‌های فرعی
+          });
+        }),
+    );
+  }
+
+  // پیدا کردن دسته‌بندی بر اساس شناسه یا slug
+  async findCategoryByIdentifier(identifier: string) {
+    if (this.isNumeric(identifier)) {
+      return this.findOneById(Number(identifier)); // اگر عددی باشد، بر اساس ID پیدا می‌شود
+    } else {
+      return this.findBySlug(identifier); // در غیر این صورت، بر اساس slug پیدا می‌شود
+    }
+  }
+
+  // پیدا کردن دسته‌بندی بر اساس شناسه (ID)
+  async findOneById(id: number) {
+    const category = await this.prisma.articleCategory.findUnique({
+      where: { id },
+      include: { children: true },
+    });
+
+    if (!category) {
+      throw new NotFoundException('دسته‌بندی پیدا نشد.');
+    }
+    return category;
+  }
+
+  // پیدا کردن دسته‌بندی بر اساس slug
+  async findBySlug(slug: string) {
+    const category = await this.prisma.articleCategory.findUnique({
+      where: { slug },
+      include: { children: true },
+    });
+
+    if (!category) {
+      throw new NotFoundException('دسته‌بندی پیدا نشد.');
+    }
+    return category;
+  }
+
+  // پیدا کردن زیرمجموعه‌ها (descendants) برای یک دسته‌بندی
   async findDescendants(categoryId: number): Promise<ArticleCategory[]> {
     const descendants = await this.prisma.articleCategory.findMany({
       where: { parentId: categoryId },
     });
 
     if (descendants.length === 0) {
-      throw new NotFoundException('No descendants found for this category');
+      throw new NotFoundException('زیرمجموعه‌ای برای این دسته‌بندی پیدا نشد.');
     }
 
     const allDescendants = [];
@@ -60,89 +128,87 @@ export class ArticleCategoriesService {
     return allDescendants;
   }
 
+  // پیدا کردن تمام دسته‌بندی‌ها
   async findAll() {
     return this.prisma.articleCategory.findMany({
       include: { children: true },
     });
   }
 
+  // پیدا کردن یک دسته‌بندی خاص
   async findOne(id: number) {
-    const category = await this.prisma.articleCategory.findUnique({
-      where: { id },
+    return this.findOneById(id);
+  }
+
+  // پیدا کردن یک دسته‌بندی فرزند
+  async findChild(parentId: number, childId: number) {
+    const parentCategory = await this.prisma.articleCategory.findUnique({
+      where: { id: parentId },
       include: { children: true },
     });
 
-    if (!category) {
-      throw new NotFoundException('Category not found');
-    }
-    return category;
-  }
-
-  async findChild(parentId: number, childId: number) {
-    // Find the parent category
-    const parentCategory = await this.prisma.articleCategory.findUnique({
-      where: { id: parentId },
-      include: { children: true }, // Include children in the result
-    });
-
     if (!parentCategory) {
-      throw new Error('Parent category not found');
+      throw new NotFoundException('دسته‌بندی والد پیدا نشد.');
     }
 
-    // Find the specific child category from the parent's children
     const childCategory = parentCategory.children.find((child) => child.id === childId);
 
     if (!childCategory) {
-      throw new Error('Child category not found under the specified parent');
+      throw new NotFoundException('دسته‌بندی فرزند پیدا نشد.');
     }
 
     return childCategory;
   }
 
-  async update(id: number, updateCategoryDto: UpdateCategoryDto) {
+  // به‌روزرسانی یک دسته‌بندی
+  async update(identifier: string, updateCategoryDto: UpdateCategoryDto) {
     const { children, ...data } = updateCategoryDto;
 
-    // Find the existing category
-    const category = await this.findOne(id);
-    if (!category) {
-      throw new NotFoundException('Category not found');
-    }
+    // پیدا کردن دسته‌بندی موجود
+    const category = await this.findCategoryByIdentifier(identifier);
 
-    // Update the category
+    // به‌روزرسانی دسته‌بندی
     await this.prisma.articleCategory.update({
-      where: { id },
+      where: { id: category.id },
       data,
     });
 
-    // Handle children updates recursively
+    // به‌روزرسانی دسته‌های فرعی به صورت بازگشتی
     if (children && children.length > 0) {
       await Promise.all(
           children.map(async (child) => {
-            // Check if child is of type UpdateCategoryDto (i.e., has 'id' property)
-            if ((child as UpdateCategoryDto).id && typeof (child as UpdateCategoryDto).id === 'number') {
-              // Update existing child if 'id' is available
-              await this.update((child as UpdateCategoryDto).id, child as UpdateCategoryDto);
+            if ((child as UpdateCategoryDto).id) {
+              await this.update((child as UpdateCategoryDto).id.toString(), child as UpdateCategoryDto);
             } else {
-              // Create new child if 'id' is not available (this is for new categories)
-              await this.create({ ...child, parentId: id });
+              await this.create({ ...child, parentId: category.id });
             }
           }),
       );
     }
 
-    return this.findOne(id); // Return the updated category with children
+    return this.findOne(category.id); // بازگشت دسته‌بندی به‌روزرسانی شده
   }
 
-  async remove(id: number) {
-    const category = await this.findOne(id);
+  // حذف یک دسته‌بندی
+  async remove(identifier: string) {
+    const category = await this.findCategoryByIdentifier(identifier);
 
     if (!category) {
-      throw new NotFoundException('Category does not exist!');
+      throw new NotFoundException('دسته‌بندی یافت نشد.');
     }
-    // Perform a soft delete by setting `isDeleted` to true
-    return this.prisma.articleCategory.update({
-      where: { id },
-      data: { isDeleted: true },
+
+    // بررسی اینکه آیا دسته‌بندی زیرمجموعه‌ها دارد یا خیر
+    const descendants = await this.prisma.articleCategory.findMany({
+      where: { parentId: category.id },
+    });
+
+    if (descendants.length > 0) {
+      throw new BadRequestException('دسته‌بندی دارای زیرمجموعه است و نمی‌توان آن را حذف کرد.');
+    }
+
+    // حذف دسته‌بندی
+    return this.prisma.articleCategory.delete({
+      where: { id: category.id },
     });
   }
 }

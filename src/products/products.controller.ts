@@ -57,27 +57,27 @@ export class ProductsController {
     );
   }
 
-  // Get a single product by ID
-  @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.productsService.findOne(id);
+  // Find a product by ID or slug
+  @Get(':identifier')
+  async findOne(@Param('identifier') identifier: string) {
+    return this.productsService.findProductByIdentifier(identifier); // Passing slug or ID as identifier
   }
 
   // Update an existing product with new data and photos
-  @Patch(':id')
+  @Patch(':identifier')
   @UseInterceptors(FilesInterceptor('photos', 5, photoUploadConfig))
   async update(
-      @Param('id', ParseIntPipe) id: number,
+      @Param('identifier') identifier: string,  // Accept slug or ID as identifier
       @Body() updateProductDto: UpdateProductDto,
       @UploadedFiles() photos: Array<Express.Multer.File>,
   ) {
-    return this.productsService.update(id, updateProductDto, photos);
+    return this.productsService.update(identifier, updateProductDto, photos);
   }
 
   // Soft delete a product and its associated photos
-  @Delete(':id')
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.productsService.deleteProductAndPhotos(id);
+  @Delete(':identifier')
+  async remove(@Param('identifier') identifier: string) {
+    return this.productsService.deleteProductAndPhotos(identifier);  // Pass slug or ID as identifier
   }
 
   // Delete a specific photo from a product
@@ -90,10 +90,11 @@ export class ProductsController {
   }
 
   // Delete all photos for a product
-  @Delete(':id/photos')
-  async deleteProductPhotos(@Param('id', ParseIntPipe) productId: number) {
-    return this.productsService.deleteAllPhotosByProductId(productId);
+  @Delete(':identifier/photos')
+  async deleteProductPhotos(@Param('identifier') identifier: string) {
+    return this.productsService.deleteAllPhotosByProductIdentifier(identifier);
   }
+
 
   // Get all photos for a product
   @Get(':productId/photos')

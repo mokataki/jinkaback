@@ -7,7 +7,7 @@ import {
   Param,
   Query,
   Body,
-  ParseIntPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { TagsService } from './tags.service';
 import { CreateTagDto } from './dto/create-tag.dto';
@@ -24,7 +24,6 @@ export class TagsController {
   }
 
   // Get all tags with pagination, filtering, and hierarchy options
-
   @Get()
   findAll(
       @Query('page') page: number = 1,
@@ -35,30 +34,28 @@ export class TagsController {
     return this.tagsService.findAllWithPagination(page, limit, search, parentId);
   }
 
-  // Get a single tag by ID
-  @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.tagsService.findOne(id);
+  // Get a single tag by ID or slug
+  @Get(':identifier')
+  async findOne(@Param('identifier') identifier: string) {
+    try {
+      return this.tagsService.findTagByIdentifier(identifier);
+    } catch (error) {
+      throw new BadRequestException('برچسب پیدا نشد');
+    }
   }
 
-  // Update an existing tag
-  @Patch(':id')
-  update(
-      @Param('id', ParseIntPipe) id: number,
+  // Update an existing tag using identifier (ID or slug)
+  @Patch(':identifier')
+  async update(
+      @Param('identifier') identifier: string,
       @Body() updateTagDto: UpdateTagDto,
   ) {
-    return this.tagsService.update(id, updateTagDto);
+    return this.tagsService.update(identifier, updateTagDto);
   }
 
-  // Soft delete a tag
-  // @Patch(':id/soft-delete')
-  // softDelete(@Param('id', ParseIntPipe) id: number) {
-  //   return this.tagsService.softDelete(id);
-  // }
-
-  // Permanently delete a tag
-  @Delete(':id')
-  delete(@Param('id', ParseIntPipe) id: number) {
-    return this.tagsService.remove(id);
+  // Permanently delete a tag using identifier (ID or slug)
+  @Delete(':identifier')
+  async delete(@Param('identifier') identifier: string) {
+    return this.tagsService.remove(identifier);
   }
 }

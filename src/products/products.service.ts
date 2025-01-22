@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException,  InternalServerErrorException,  Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { Prisma } from '@prisma/client';
 import { CategoriesService } from '../categories/categories.service';
+import slugify from '@sindresorhus/slugify'; // اضافه کردن import برای slugify
 
 @Injectable()
 export class ProductsService {
@@ -12,9 +13,20 @@ export class ProductsService {
       private prisma: PrismaService,
   ) {}
 
-  // Create a new product with photos
+  // ایجاد یک محصول جدید همراه با تصاویر
   async create(createProductDto: CreateProductDto, photos: Array<Express.Multer.File>) {
-    const { categoryIds, colorIds, tagIds, price, inventory, ...productData } = createProductDto;
+    const { categoryIds, colorIds, tagIds, price, inventory, brandId, ...productData } = createProductDto;
+
+    const slug = slugify(productData.name); // Generate slug from product name
+
+    // Check if the product already exists by name (or slug)
+    const existingProduct = await this.prisma.product.findUnique({
+      where: { slug },
+    });
+
+    if (existingProduct) {
+      throw new InternalServerErrorException('محصولی با این نام وجود داشته است');
+    }
 
     const photoUrls = photos?.map(photo => `/uploads/photos/${photo.filename}`);
 
@@ -34,26 +46,27 @@ export class ProductsService {
       return await this.prisma.product.create({
         data: {
           ...productData,
+          slug, // Add slug field
           price: price || null,
           inventory: inventory || null,
           Category: categoryConnect,
           colors: colorConnect,
-          tags: tagsConnect, // Connect multiple tags to the product
+          tags: tagsConnect, // Connect tags
           photos: {
             create: photoUrls?.map((url) => ({ url })),
           },
+          brandId: brandId || null, // Make sure brandId is passed as a number
         },
-        include: { Category: true, colors: true, brand: true, photos: true, tags: true }, // Include tags in the result
+        include: { Category: true, colors: true, brand: true, photos: true, tags: true },
       });
     } catch (error) {
-      throw new InternalServerErrorException('Error creating the product', error.message);
+      throw new InternalServerErrorException('خطا در ایجاد محصول', error.message);
     }
   }
 
 
 
-  // Get all products with filtering, pagination, and sorting
-  // Get all products with filtering, pagination, and sorting
+  // گرفتن تمامی محصولات با فیلتر، صفحه‌بندی و مرتب‌سازی
   async findAll(
       page: number = 1,
       limit: number = 10,
@@ -107,44 +120,81 @@ export class ProductsService {
           colors: true,
           brand: true,
           photos: true,
-          tags: true, // Include tags in the result
+          tags: true, // گنجاندن برچسب‌ها در نتیجه
         },
       });
     } catch (error) {
-      throw new InternalServerErrorException('Error fetching products', error.message);
+      throw new InternalServerErrorException('خطا در دریافت محصولات', error.message);
     }
   }
 
+  // دریافت یک محصول با شناسه یا slug
+  async findOne(identifier: string | number) {
+    const isNumeric = !isNaN(Number(identifier));
 
-  // Get a single product by ID
-  // Get a single product by ID
-  async findOne(id: number) {
+    const where: Prisma.ProductWhereUniqueInput = isNumeric
+        ? { id: Number(identifier) }  // اگر عددی بود از 'id' استفاده کن
+        : { slug: String(identifier) };  // اگر string بود از 'slug' استفاده کن
+
     try {
       const product = await this.prisma.product.findUnique({
-        where: { id },
+        where,
         include: {
           Category: true,
           colors: true,
           brand: true,
           photos: true,
-          tags: true, // Include tags in the result
+          tags: true, // گنجاندن برچسب‌ها در نتیجه
         },
       });
 
       if (!product) {
-        throw new NotFoundException(`Product with ID ${id} not found`);
+        throw new NotFoundException(`محصول با شناسه ${identifier} یافت نشد`);
       }
 
       return product;
     } catch (error) {
-      throw new InternalServerErrorException('Error fetching the product', error.message);
+      throw new InternalServerErrorException('خطا در دریافت محصول', error.message);
     }
   }
 
+  // یافتن محصول با شناسه یا slug
+  async findProductByIdentifier(identifier: string) {
+    const isNumeric = !isNaN(Number(identifier));
 
-  // Update an existing product with new data and photos
-  async update(id: number, updateProductDto: UpdateProductDto, photos: Array<Express.Multer.File>) {
-    const { categoryIds, colorIds, tagIds, ...productData } = updateProductDto;
+    const where: Prisma.ProductWhereUniqueInput =
+        isNumeric
+            ? { id: Number(identifier) }  // اگر عددی بود از 'id' استفاده کن
+            : { slug: identifier };        // اگر string بود از 'slug' استفاده کن
+
+    try {
+      const product = await this.prisma.product.findUnique({
+        where,
+        include: {
+          Category: true,
+          colors: true,
+          brand: true,
+          photos: true,
+          tags: true,
+        },
+      });
+
+      if (!product) {
+        throw new NotFoundException(`محصول با شناسه ${identifier} یافت نشد`);
+      }
+
+      return product;
+    } catch (error) {
+      throw new InternalServerErrorException('خطا در دریافت محصول', error.message);
+    }
+  }
+
+  // به‌روزرسانی محصول موجود با داده‌ها و تصاویر جدید
+  async update(identifier: string | number, updateProductDto: UpdateProductDto, photos: Array<Express.Multer.File>) {
+    const { categoryIds, colorIds, tagIds, name, ...productData } = updateProductDto;
+
+    const slug = name ? slugify(name) : undefined;
+
     const photoUrls = photos?.map(photo => `/uploads/photos/${photo.filename}`) || [];
 
     const categoryConnect = categoryIds?.length
@@ -163,12 +213,17 @@ export class ProductsService {
         ? { create: photoUrls.map((url) => ({ url })) }
         : undefined;
 
+    const where: Prisma.ProductWhereUniqueInput =
+        typeof identifier === 'number'
+            ? { id: identifier }
+            : { slug: identifier };
+
     try {
-      // Update the product and connect tags
       const product = await this.prisma.product.update({
-        where: { id },
+        where,
         data: {
           ...productData,
+          slug, // فیلد slug به‌روز شده
           Category: categoryConnect,
           colors: colorConnect,
           tags: tagsConnect ? { connect: tagsConnect.connect } : undefined,
@@ -179,68 +234,90 @@ export class ProductsService {
           colors: true,
           brand: true,
           photos: true,
-          tags: true, // Include tags in the result
+          tags: true, // گنجاندن برچسب‌ها در نتیجه
         },
       });
 
       if (!product) {
-        throw new NotFoundException(`Product with ID ${id} not found`);
+        throw new NotFoundException(`محصول با شناسه ${identifier} یافت نشد`);
       }
 
       return product;
     } catch (error) {
-      throw new InternalServerErrorException('Error updating the product', error.message);
+      throw new InternalServerErrorException('خطا در به‌روزرسانی محصول', error.message);
     }
   }
 
-
-
-
-
-  // Delete all photos by product ID
-  async deleteAllPhotosByProductId(productId: number) {
+  // حذف تمامی تصاویر یک محصول با شناسه
+  async deleteAllPhotosByProductIdentifier(identifier: string) {
     try {
+      const productId = isNaN(Number(identifier)) ? identifier : Number(identifier);
+
+      let numericProductId: number;
+
+      if (typeof productId === 'string') {
+        const product = await this.prisma.product.findUnique({
+          where: { slug: productId },
+          select: { id: true },
+        });
+
+        if (!product) {
+          throw new NotFoundException(`محصول با slug ${productId} یافت نشد`);
+        }
+
+        numericProductId = product.id;
+      } else {
+        numericProductId = productId;
+      }
+
       const deleted = await this.prisma.photo.deleteMany({
-        where: { productId },
+        where: {
+          productId: numericProductId,
+        },
       });
 
       if (deleted.count === 0) {
-        throw new NotFoundException(`No photos found for product with ID ${productId}`);
+        throw new NotFoundException(`هیچ عکسی برای محصول با شناسه ${identifier} پیدا نشد`);
       }
 
       return deleted.count;
     } catch (error) {
-      throw new InternalServerErrorException('Error deleting photos', error.message);
+      throw new InternalServerErrorException('خطا در حذف تصاویر', error.message);
     }
   }
 
-  // Delete a product and its associated photos
-  async deleteProductAndPhotos(productId: number) {
+  // حذف محصول و تصاویر مربوطه
+  async deleteProductAndPhotos(identifier: string) {
     try {
+      const productId = isNaN(Number(identifier)) ? identifier : Number(identifier);
+
+      const whereCondition: Prisma.ProductWhereUniqueInput = isNaN(Number(identifier))
+          ? { slug: identifier }
+          : { id: Number(identifier) };
+
       const product = await this.prisma.product.findUnique({
-        where: { id: productId },
+        where: whereCondition,
       });
 
       if (!product) {
-        throw new NotFoundException(`Product with ID ${productId} not found`);
+        throw new NotFoundException(`محصول با شناسه ${identifier} یافت نشد`);
       }
 
       return this.prisma.$transaction(async (transaction) => {
         await transaction.photo.deleteMany({
-          where: { productId },
+          where: { productId: Number(product.id) },
         });
 
-        return  transaction.product.delete({
-          where: { id: productId },
+        return transaction.product.delete({
+          where: { id: Number(product.id) },
         });
-
       });
     } catch (error) {
-      throw new InternalServerErrorException('Error deleting the product and its photos', error.message);
+      throw new InternalServerErrorException('خطا در حذف محصول و تصاویر مربوطه', error.message);
     }
   }
 
-  // Delete a specific photo from a product
+  // حذف یک تصویر خاص از یک محصول
   async deletePhoto(productId: number, photoId: number) {
     try {
       const product = await this.prisma.product.findUnique({
@@ -248,7 +325,7 @@ export class ProductsService {
       });
 
       if (!product) {
-        throw new NotFoundException(`Product with ID ${productId} not found`);
+        throw new NotFoundException(`محصول با شناسه ${productId} یافت نشد`);
       }
 
       const photo = await this.prisma.photo.findUnique({
@@ -256,18 +333,18 @@ export class ProductsService {
       });
 
       if (!photo || photo.productId !== productId) {
-        throw new NotFoundException(`Photo with ID ${photoId} not found for this product`);
+        throw new NotFoundException(`تصویر با شناسه ${photoId} برای این محصول یافت نشد`);
       }
 
       return this.prisma.photo.delete({
         where: { id: photoId },
       });
     } catch (error) {
-      throw new InternalServerErrorException('Error deleting the photo', error.message);
+      throw new InternalServerErrorException('خطا در حذف تصویر', error.message);
     }
   }
 
-  // Get all photos for a product by product ID
+  // دریافت تمامی تصاویر یک محصول با شناسه محصول
   async getPhotosByProductId(productId: number) {
     try {
       const product = await this.prisma.product.findUnique({
@@ -276,12 +353,12 @@ export class ProductsService {
       });
 
       if (!product) {
-        throw new NotFoundException(`Product with ID ${productId} not found`);
+        throw new NotFoundException(`محصول با شناسه ${productId} یافت نشد`);
       }
 
       return product.photos;
     } catch (error) {
-      throw new InternalServerErrorException('Error fetching photos for the product', error.message);
+      throw new InternalServerErrorException('خطا در دریافت تصاویر محصول', error.message);
     }
   }
 }

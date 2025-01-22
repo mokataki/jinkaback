@@ -1,40 +1,56 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {Injectable, NotFoundException, BadRequestException, ConflictException} from '@nestjs/common';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from "../../prisma/prisma.service";
+import slugify from "@sindresorhus/slugify";
 
 @Injectable()
 export class TagsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Create a new tag
+  // Create a new tag
   async create(createTagDto: CreateTagDto) {
     const { parentId, ...rest } = createTagDto;
+    const slug = slugify(rest.name, { lower: true } as any); // Generate slug from name
 
     try {
-      // Handle parent tag if provided
+      // Check if a tag with the same name already exists
+      const existingTag = await this.prisma.tags.findUnique({
+        where: { name: rest.name }
+      });
+
+      if (existingTag) {
+        throw new ConflictException('برچسب با این نام قبلاً ایجاد شده است');
+      }
+
+      // If parentId is provided, validate it
       let parent = null;
       if (parentId) {
         parent = await this.prisma.tags.findUnique({ where: { id: parentId } });
         if (!parent) {
-          throw new NotFoundException('Parent tag not found');
+          throw new NotFoundException('برچسب والد پیدا نشد');
         }
       }
 
       return this.prisma.tags.create({
         data: {
           ...rest,
+          slug,
           parentId: parentId ?? null,
         },
       });
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
+      console.error('Error during tag creation:', error); // Log error details
+      if (error instanceof ConflictException) {
+        throw error; // If it's a conflict error, propagate it
       }
-      throw new BadRequestException('Failed to create tag');
+      throw new BadRequestException('خطا در ایجاد برچسب');
     }
   }
 
+  // Get tags with pagination, filtering, and hierarchy options
   async findAll(searchQuery: string, parentId?: number, pagination?: { skip?: number; take?: number }) {
     try {
       const where: Prisma.tagsWhereInput = {
@@ -43,7 +59,7 @@ export class TagsService {
           contains: searchQuery,
           mode: Prisma.QueryMode.insensitive, // Case-insensitive search
         },
-        ...(parentId ? { parentId } : {}), // Include parentId filter if provided
+        ...(parentId ? { parentId } : {}),
       };
 
       const tags = await this.prisma.tags.findMany({
@@ -57,10 +73,11 @@ export class TagsService {
 
       return { tags, count };
     } catch (error) {
-      throw new BadRequestException('Failed to retrieve tags');
+      throw new BadRequestException('خطا در دریافت برچسب‌ها');
     }
   }
 
+  // Get tags with pagination, search, and parentId filter
   async findAllWithPagination(page: number, limit: number, searchQuery: string, parentId?: number) {
     const pagination = {
       skip: (page - 1) * limit,
@@ -70,101 +87,118 @@ export class TagsService {
     return this.findAll(searchQuery, parentId, pagination);
   }
 
-  async findOne(id: number) {
-    try {
-      const tag = await this.prisma.tags.findUnique({
-        where: { id },
-        include: { children: true, parent: true },
-      });
+  // Get tag by ID or slug (refactored logic moved here)
+  async findTagByIdentifier(identifier: string) {
+    const isNumeric = !isNaN(Number(identifier));
 
-      if (!tag || tag.isDeleted) {
-        throw new NotFoundException('Tag not found');
-      }
-
-      return tag;
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new BadRequestException('Failed to retrieve tag');
+    if (isNumeric) {
+      const parsedId = parseInt(identifier);
+      return this.findOneById(parsedId); // Find by ID if numeric
     }
+
+    return this.findBySlug(identifier); // Otherwise, find by slug
   }
 
-  async update(id: number, updateTagDto: UpdateTagDto) {
+  // Get tag by ID
+  async findOneById(id: number) {
+    const tag = await this.prisma.tags.findUnique({
+      where: { id },
+      include: { children: true, parent: true },
+    });
+
+    if (!tag || tag.isDeleted) {
+      throw new NotFoundException('برچسب پیدا نشد');
+    }
+
+    return tag;
+  }
+
+  // Get tag by slug
+  async findBySlug(slug: string) {
+    const tag = await this.prisma.tags.findUnique({
+      where: { slug },
+      include: { children: true, parent: true },
+    });
+
+    if (!tag || tag.isDeleted) {
+      throw new NotFoundException('برچسب پیدا نشد');
+    }
+
+    return tag;
+  }
+
+  // Update tag by ID
+  async update(identifier: string, updateTagDto: UpdateTagDto) {
+    const isNumeric = !isNaN(Number(identifier));
     const { parentId, name, ...updateData } = updateTagDto;
+    const slug = slugify(name, { lower: true } as any);
 
     try {
-      // Fetch the current tag to check its existing name
-      const currentTag = await this.prisma.tags.findUnique({
-        where: { id },
-      });
+      let currentTag;
 
-      if (!currentTag || currentTag.isDeleted) {
-        throw new NotFoundException('Tag not found');
+      // If it's numeric, search by ID, otherwise search by slug
+      if (isNumeric) {
+        currentTag = await this.prisma.tags.findUnique({
+          where: { id: Number(identifier) },
+        });
+      } else {
+        currentTag = await this.prisma.tags.findUnique({
+          where: { slug: identifier },
+        });
       }
 
-      // If the name is provided and it is different from the current name, perform a uniqueness check
-      if (name && name !== currentTag.name) {
-        const existingTag = await this.prisma.tags.findUnique({
-          where: { name },
-        });
-
-        // If another tag with the same name exists and it is not the tag being updated, throw an error
-        if (existingTag && existingTag.id !== id) {
-          throw new BadRequestException('Tag with this name already exists');
-        }
+      if (!currentTag || currentTag.isDeleted) {
+        throw new NotFoundException('برچسب پیدا نشد');
       }
 
       // Validate parentId if provided
       if (parentId) {
         const parent = await this.prisma.tags.findUnique({ where: { id: parentId } });
         if (!parent) {
-          throw new NotFoundException('Parent tag not found');
+          throw new NotFoundException('برچسب والد پیدا نشد');
         }
       }
 
-      // Update the tag with the new data
       return this.prisma.tags.update({
-        where: { id },
+        where: { id: currentTag.id },
         data: {
           ...updateData,
           parentId: parentId ?? null,
-          name,  // Update the name if it's provided
+          name,
+          slug,
         },
       });
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        // Handling unique constraint violation error or other Prisma-specific errors
-        if (error.code === 'P2002') {
-          throw new BadRequestException('Unique constraint failed');
-        }
-      }
-      throw new BadRequestException('Failed to update tag');
+      throw new BadRequestException('خطا در به‌روزرسانی برچسب');
     }
   }
 
-  async remove(id: number) {
+  // Delete a tag
+  async remove(identifier: string) {
+    const isNumeric = !isNaN(Number(identifier));
+
     try {
-      const tag = await this.prisma.tags.findUnique({ where: { id } });
-      if (!tag || tag.isDeleted) {
-        throw new NotFoundException('Tag not found');
+      let tag;
+
+      // If it's numeric, search by ID, otherwise search by slug
+      if (isNumeric) {
+        tag = await this.prisma.tags.findUnique({ where: { id: Number(identifier) } });
+      } else {
+        tag = await this.prisma.tags.findUnique({ where: { slug: identifier } });
       }
 
-      // Soft delete tag and its children
+      if (!tag || tag.isDeleted) {
+        throw new NotFoundException('برچسب پیدا نشد');
+      }
+
       await this.prisma.$transaction(async (transaction) => {
-        await transaction.tags.deleteMany({ where: { parentId: id } });
-        await transaction.tags.delete({ where: { id } });
+        await transaction.tags.deleteMany({ where: { parentId: tag.id } });
+        await transaction.tags.delete({ where: { id: tag.id } });
       });
 
-      return { message: 'Tag deleted successfully' };
+      return { message: 'برچسب با موفقیت حذف شد' };
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new BadRequestException('Failed to delete tag');
+      throw new BadRequestException('خطا در حذف برچسب');
     }
   }
 }

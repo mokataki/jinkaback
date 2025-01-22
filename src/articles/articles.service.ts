@@ -3,20 +3,32 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { Prisma } from '@prisma/client';
+import { CategoriesService } from '../categories/categories.service';
+import slugify from '@sindresorhus/slugify';
 import {ArticleCategoriesService} from "../article-categoris/article-categoris.service";
 
 @Injectable()
 export class ArticlesService {
   constructor(
-      @Inject(forwardRef(() => ArticleCategoriesService))
-      private articleCategoryService: ArticleCategoriesService,
+      @Inject(forwardRef(() => ArticleCategoriesService)) private articlecategoriesservice: ArticleCategoriesService,
       private prisma: PrismaService,
   ) {}
 
-  // Create a new article with photos
+  // ایجاد یک مقاله جدید همراه با تصاویر
   async create(createArticleDto: CreateArticleDto, photos: Array<Express.Multer.File>) {
-    const { articleCategoryIds, colorIds, tagIds, price, inventory, ...articleData } = createArticleDto;
-    const photoUrls = photos?.map(photo => `/uploads/photos/${photo.filename}`) || [];
+    const { articleCategoryIds, colorIds, tagIds, price, inventory, brandId, ...articleData } = createArticleDto;
+    const slug = slugify(articleData.name); // Generate slug from article name
+
+    // Check if the article already exists by name (or slug)
+    const existingArticle = await this.prisma.article.findUnique({
+      where: { slug },
+    });
+
+    if (existingArticle) {
+      throw new InternalServerErrorException('مقاله‌ای با این نام وجود داشته است');
+    }
+
+    const photoUrls = photos?.map(photo => `/uploads/photos/${photo.filename}`);
 
     const articleCategoryConnect = articleCategoryIds?.length
         ? { connect: articleCategoryIds.map((id) => ({ id })) }
@@ -34,28 +46,25 @@ export class ArticlesService {
       return await this.prisma.article.create({
         data: {
           ...articleData,
+          slug, // Add slug field
           price: price || null,
           inventory: inventory || null,
           categories: articleCategoryConnect,
           colors: colorConnect,
-          tags: tagsConnect,
-          photos: photoUrls.length
-              ? { create: photoUrls.map((url) => ({ url })) }
-              : undefined, // Only create photos if there are URLs
+          tags: tagsConnect, // Connect tags
+          photos: {
+            create: photoUrls?.map((url) => ({ url })),
+          },
+          brandId: brandId || null, // Make sure brandId is passed as a number
         },
-        include: {
-          categories: true,
-          colors: true,
-          photos: true,
-          tags: true,
-        },
+        include: { categories: true, colors: true, brand: true, photos: true, tags: true },
       });
     } catch (error) {
-      throw new InternalServerErrorException('Error creating the article', error.message);
+      throw new InternalServerErrorException('خطا در ایجاد مقاله', error.message);
     }
   }
 
-  // Get all articles with filtering, pagination, and sorting
+  // گرفتن تمامی مقالات با فیلتر، صفحه‌بندی و مرتب‌سازی
   async findAll(
       page: number = 1,
       limit: number = 10,
@@ -79,19 +88,17 @@ export class ArticlesService {
       colors: colorIdsArray?.length
           ? { some: { id: { in: colorIdsArray } } }
           : undefined,
-      brand: brandIdNumber
-          ? { id: brandIdNumber } // Filtering via the related `brand` model
-          : undefined,      price: minPrice || maxPrice ? { gte: minPrice, lte: maxPrice } : undefined,
+      brandId: brandIdNumber || undefined,
+      price: minPrice || maxPrice
+          ? { gte: minPrice, lte: maxPrice }
+          : undefined,
       isPublished: true,
     };
 
     if (sort === 'desc') {
       const fiveHoursAgo = new Date();
       fiveHoursAgo.setHours(fiveHoursAgo.getHours() - 24);
-
-      where.createdAt = {
-        gte: fiveHoursAgo,
-      };
+      where.createdAt = { gte: fiveHoursAgo };
       limit = 15;
     }
 
@@ -106,41 +113,80 @@ export class ArticlesService {
         include: {
           categories: true,
           colors: true,
+          brand: true,
           photos: true,
-          tags: true,
+          tags: true, // گنجاندن برچسب‌ها در نتیجه
         },
       });
     } catch (error) {
-      throw new InternalServerErrorException('Error fetching articles', error.message);
+      throw new InternalServerErrorException('خطا در دریافت مقالات', error.message);
     }
   }
 
-  // Get a single article by ID
-  async findOne(id: number) {
+  // دریافت یک مقاله با شناسه یا slug
+  async findOne(identifier: string | number) {
+    const isNumeric = !isNaN(Number(identifier));
+    const where: Prisma.ArticleWhereUniqueInput = isNumeric
+        ? { id: Number(identifier) }  // اگر عددی بود از 'id' استفاده کن
+        : { slug: String(identifier) };  // اگر string بود از 'slug' استفاده کن
+
     try {
       const article = await this.prisma.article.findUnique({
-        where: { id },
+        where,
         include: {
           categories: true,
           colors: true,
+          brand: true,
+          photos: true,
+          tags: true, // گنجاندن برچسب‌ها در نتیجه
+        },
+      });
+
+      if (!article) {
+        throw new NotFoundException(`مقاله با شناسه ${identifier} یافت نشد`);
+      }
+
+      return article;
+    } catch (error) {
+      throw new InternalServerErrorException('خطا در دریافت مقاله', error.message);
+    }
+  }
+
+  // یافتن مقاله با شناسه یا slug
+  async findArticleByIdentifier(identifier: string) {
+    const isNumeric = !isNaN(Number(identifier));
+
+    const where: Prisma.ArticleWhereUniqueInput =
+        isNumeric
+            ? { id: Number(identifier) }  // اگر عددی بود از 'id' استفاده کن
+            : { slug: identifier };        // اگر string بود از 'slug' استفاده کن
+
+    try {
+      const article = await this.prisma.article.findUnique({
+        where,
+        include: {
+          categories: true,
+          colors: true,
+          brand: true,
           photos: true,
           tags: true,
         },
       });
 
       if (!article) {
-        throw new NotFoundException(`Article with ID ${id} not found`);
+        throw new NotFoundException(`مقاله با شناسه ${identifier} یافت نشد`);
       }
 
       return article;
     } catch (error) {
-      throw new InternalServerErrorException('Error fetching the article', error.message);
+      throw new InternalServerErrorException('خطا در دریافت مقاله', error.message);
     }
   }
 
-  // Update an existing article with new data and photos
-  async update(id: number, updateArticleDto: UpdateArticleDto, photos: Array<Express.Multer.File>) {
-    const { articleCategoryIds, colorIds, tagIds, ...articleData } = updateArticleDto;
+  // به‌روزرسانی مقاله موجود با داده‌ها و تصاویر جدید
+  async update(identifier: string | number, updateArticleDto: UpdateArticleDto, photos: Array<Express.Multer.File>) {
+    const { articleCategoryIds, colorIds, tagIds, name, ...articleData } = updateArticleDto;
+    const slug = name ? slugify(name) : undefined;
     const photoUrls = photos?.map(photo => `/uploads/photos/${photo.filename}`) || [];
 
     const articleCategoryConnect = articleCategoryIds?.length
@@ -156,84 +202,115 @@ export class ArticlesService {
         : undefined;
 
     const photoData = photoUrls.length > 0
-        ? { create: photoUrls.map((url) => ({
-            url,
-            article: { connect: { id } }, // Connect the photo to the article
-          })) }
+        ? { create: photoUrls.map((url) => ({ url })) }
         : undefined;
 
+    const where: Prisma.ArticleWhereUniqueInput =
+        typeof identifier === 'number'
+            ? { id: identifier }
+            : { slug: identifier };
+
+    // Verify the article exists
+    const existingArticle = await this.prisma.article.findUnique({ where });
+
+    if (!existingArticle) {
+      throw new NotFoundException(`مقاله با شناسه ${identifier} یافت نشد`);
+    }
+
     try {
-      // Update the article and connect tags
-      const article = await this.prisma.article.update({
-        where: { id },
+      return await this.prisma.article.update({
+        where,
         data: {
           ...articleData,
+          slug, // Update slug if name changes
           categories: articleCategoryConnect,
           colors: colorConnect,
           tags: tagsConnect ? { connect: tagsConnect.connect } : undefined,
-          photos: photoData,
+          photos: photoData, // Add photos
         },
         include: {
           categories: true,
           colors: true,
+          brand: true,
           photos: true,
           tags: true,
         },
       });
-
-      if (!article) {
-        throw new NotFoundException(`Article with ID ${id} not found`);
-      }
-
-      return article;
     } catch (error) {
-      throw new InternalServerErrorException('Error updating the article', error.message);
+      throw new InternalServerErrorException('خطا در به‌روزرسانی مقاله', error.message);
     }
   }
 
-  // Delete all photos by article ID
-  async deleteAllPhotosByArticleId(articleId: number) {
+
+  // حذف تمامی تصاویر یک مقاله با شناسه
+  async deleteAllPhotosByArticleIdentifier(identifier: string) {
     try {
+      const articleId = isNaN(Number(identifier)) ? identifier : Number(identifier);
+      let numericArticleId: number;
+
+      if (typeof articleId === 'string') {
+        const article = await this.prisma.article.findUnique({
+          where: { slug: articleId },
+          select: { id: true },
+        });
+
+        if (!article) {
+          throw new NotFoundException(`مقاله با slug ${articleId} یافت نشد`);
+        }
+
+        numericArticleId = article.id;
+      } else {
+        numericArticleId = articleId;
+      }
+
       const deleted = await this.prisma.photo.deleteMany({
-        where: { articleId },
+        where: {
+          articleId: numericArticleId,
+        },
       });
 
       if (deleted.count === 0) {
-        throw new NotFoundException(`No photos found for article with ID ${articleId}`);
+        throw new NotFoundException(`هیچ عکسی برای مقاله با شناسه ${identifier} پیدا نشد`);
       }
 
       return deleted.count;
     } catch (error) {
-      throw new InternalServerErrorException('Error deleting photos', error.message);
+      throw new InternalServerErrorException('خطا در حذف تصاویر', error.message);
     }
   }
 
-  // Delete an article and its associated photos
-  async deleteArticleAndPhotos(articleId: number) {
+  // حذف مقاله و تصاویر مربوطه
+  async deleteArticleAndPhotos(identifier: string) {
     try {
+      const articleId = isNaN(Number(identifier)) ? identifier : Number(identifier);
+
+      const whereCondition: Prisma.ArticleWhereUniqueInput = isNaN(Number(identifier))
+          ? { slug: identifier }
+          : { id: Number(identifier) };
+
       const article = await this.prisma.article.findUnique({
-        where: { id: articleId },
+        where: whereCondition,
       });
 
       if (!article) {
-        throw new NotFoundException(`Article with ID ${articleId} not found`);
+        throw new NotFoundException(`مقاله با شناسه ${identifier} یافت نشد`);
       }
 
       return this.prisma.$transaction(async (transaction) => {
         await transaction.photo.deleteMany({
-          where: { articleId },
+          where: { articleId: Number(article.id) },
         });
 
         return transaction.article.delete({
-          where: { id: articleId },
+          where: { id: Number(article.id) },
         });
       });
     } catch (error) {
-      throw new InternalServerErrorException('Error deleting the article and its photos', error.message);
+      throw new InternalServerErrorException('خطا در حذف مقاله و تصاویر مربوطه', error.message);
     }
   }
 
-  // Delete a specific photo from an article
+  // حذف یک تصویر خاص از یک مقاله
   async deletePhoto(articleId: number, photoId: number) {
     try {
       const article = await this.prisma.article.findUnique({
@@ -241,7 +318,7 @@ export class ArticlesService {
       });
 
       if (!article) {
-        throw new NotFoundException(`Article with ID ${articleId} not found`);
+        throw new NotFoundException(`مقاله با شناسه ${articleId} یافت نشد`);
       }
 
       const photo = await this.prisma.photo.findUnique({
@@ -249,18 +326,18 @@ export class ArticlesService {
       });
 
       if (!photo || photo.articleId !== articleId) {
-        throw new NotFoundException(`Photo with ID ${photoId} not found for this article`);
+        throw new NotFoundException(`تصویر با شناسه ${photoId} برای این مقاله یافت نشد`);
       }
 
       return this.prisma.photo.delete({
         where: { id: photoId },
       });
     } catch (error) {
-      throw new InternalServerErrorException('Error deleting the photo', error.message);
+      throw new InternalServerErrorException('خطا در حذف تصویر', error.message);
     }
   }
 
-  // Get all photos for an article by article ID
+  // دریافت تمامی تصاویر یک مقاله با شناسه مقاله
   async getPhotosByArticleId(articleId: number) {
     try {
       const article = await this.prisma.article.findUnique({
@@ -269,12 +346,12 @@ export class ArticlesService {
       });
 
       if (!article) {
-        throw new NotFoundException(`Article with ID ${articleId} not found`);
+        throw new NotFoundException(`مقاله با شناسه ${articleId} یافت نشد`);
       }
 
       return article.photos;
     } catch (error) {
-      throw new InternalServerErrorException('Error fetching photos for the article', error.message);
+      throw new InternalServerErrorException('خطا در دریافت تصاویر مقاله', error.message);
     }
   }
 }

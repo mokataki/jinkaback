@@ -1,57 +1,45 @@
-import {Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post} from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, ParseIntPipe } from '@nestjs/common';
+import { CreateCategoryDto } from "../categories/dto/create-category.dto";
+import { UpdateCategoryDto } from "../categories/dto/update-category.dto";
 import {ArticleCategoriesService} from "./article-categoris.service";
-import {CreateArticleCategoryDto} from "./dto/create-article-categoris.dto";
-import {UpdateArticleCategoryDto} from "./dto/update-article-categoris.dto";
 
 @Controller('article-categories')
 export class ArticleCategoriesController {
   constructor(private readonly articleCategoriesService: ArticleCategoriesService) {}
 
-  // Create a new category
   @Post()
-  async create(@Body() createArticleCategoryDto: CreateArticleCategoryDto) {
-    return this.articleCategoriesService.create(createArticleCategoryDto);
+  async create(@Body() createCategoryDto: CreateCategoryDto) {
+    return this.articleCategoriesService.create(createCategoryDto);
   }
 
-  // Get all categories
   @Get()
   async findAll() {
     return this.articleCategoriesService.findAll();
   }
 
-  // Get a single category by ID
-  @Get(':id')
-  async findOne(@Param('id',ParseIntPipe) id: number) {
-    return this.articleCategoriesService.findOne(id);
+  @Get(':identifier')
+  async findOne(@Param('identifier') identifier: string) {
+    return this.articleCategoriesService.findCategoryByIdentifier(identifier); // Using string identifier
   }
 
-  // Get all descendants (children, grandchildren, etc.) of a category
-  @Get(':id/descendants')
-  async findDescendants(@Param('id',ParseIntPipe) id: number) {
-    return this.articleCategoriesService.findDescendants(id);
-  }
-
-  // Get a specific child of a parent category
   @Get(':parentId/children/:childId')
   async findChild(
-      @Param('parentId') parentId: number,
-      @Param('childId') childId: number,
+      @Param('parentId', ParseIntPipe) parentId: number,
+      @Param('childId', ParseIntPipe) childId: number,
   ) {
     return this.articleCategoriesService.findChild(parentId, childId);
   }
 
-  // Update an existing category
-  @Patch(':id')
+  @Patch(':identifier')
   async update(
-      @Param('id',ParseIntPipe) id: number,
-      @Body() updateArticleCategoryDto: UpdateArticleCategoryDto,
+      @Param('identifier') identifier: string, // Accept string identifier (could be ID or slug)
+      @Body() updateCategoryDto: UpdateCategoryDto,
   ) {
-    return this.articleCategoriesService.update(id, updateArticleCategoryDto);
+    return this.articleCategoriesService.update(identifier, updateCategoryDto); // Passing string identifier
   }
 
-  // Soft delete a category
-  @Delete(':id')
-  async remove(@Param('id',ParseIntPipe) id: number) {
-    return this.articleCategoriesService.remove(id);
+  @Delete(':identifier')
+  async remove(@Param('identifier') identifier: string) {
+    return this.articleCategoriesService.remove(identifier); // Passing string identifier
   }
 }

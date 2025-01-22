@@ -2,24 +2,31 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { CreateBrandDto } from './dto/create-brand.dto';
 import { UpdateBrandDto } from './dto/update-brand.dto';
 import { PrismaService } from "../../prisma/prisma.service";
+import slugify from '@sindresorhus/slugify'; // Import slugify
 
 @Injectable()
 export class BrandsService {
   constructor(private prisma: PrismaService) {}
 
+  // ایجاد برند جدید
   async create(createBrandDto: CreateBrandDto) {
     try {
       const existingBrand = await this.findOneByName(createBrandDto.brandName);
       if (existingBrand) {
-        throw new BadRequestException(`Brand with name '${createBrandDto.brandName}' already exists!`);
+        throw new BadRequestException(`برندی با نام '${createBrandDto.brandName}' قبلاً وجود دارد!`);
       }
 
+      const slug = slugify(createBrandDto.brandName);
+
       const brand = await this.prisma.brand.create({
-        data: createBrandDto,
+        data: {
+          ...createBrandDto,
+          slug, // اضافه کردن slug تولید شده
+        },
       });
 
       return {
-        message: 'Brand successfully created!',
+        message: 'برند با موفقیت ایجاد شد!',
         brand,
       };
     } catch (error) {
@@ -27,6 +34,43 @@ export class BrandsService {
     }
   }
 
+  // به‌روزرسانی برند موجود
+  async update(identifier: string, updateBrandDto: UpdateBrandDto) {
+    try {
+      // بررسی اینکه شناسه عددی است یا slug
+      const isId = !isNaN(Number(identifier));
+      let brandExisting;
+
+      if (isId) {
+        brandExisting = await this.findOne(Number(identifier)); // جستجو بر اساس ID
+      } else {
+        brandExisting = await this.findOneBySlug(identifier); // جستجو بر اساس slug
+      }
+
+      if (!brandExisting) {
+        throw new NotFoundException(`برندی با شناسه '${identifier}' پیدا نشد!`);
+      }
+
+      const slug = slugify(updateBrandDto.brandName || brandExisting.brandName);
+
+      const updatedBrand = await this.prisma.brand.update({
+        where: { id: brandExisting.id },
+        data: {
+          ...updateBrandDto,
+          slug, // به‌روزرسانی با slug جدید
+        },
+      });
+
+      return {
+        message: 'برند با موفقیت به‌روزرسانی شد!',
+        brand: updatedBrand,
+      };
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  // پیدا کردن برند بر اساس نام
   async findOneByName(brandName: string) {
     try {
       return await this.prisma.brand.findUnique({
@@ -37,6 +81,18 @@ export class BrandsService {
     }
   }
 
+  // پیدا کردن برند بر اساس slug
+  async findOneBySlug(slug: string) {
+    try {
+      return await this.prisma.brand.findUnique({
+        where: { slug },
+      });
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  // پیدا کردن تمام برندها
   async findAll() {
     try {
       return await this.prisma.brand.findMany();
@@ -45,6 +101,7 @@ export class BrandsService {
     }
   }
 
+  // پیدا کردن برند بر اساس ID
   async findOne(id: number) {
     try {
       const brand = await this.prisma.brand.findUnique({
@@ -52,7 +109,7 @@ export class BrandsService {
       });
 
       if (!brand) {
-        throw new NotFoundException(`Brand with ID ${id} does not exist!`);
+        throw new NotFoundException(`برند با ID ${id} وجود ندارد!`);
       }
 
       return brand;
@@ -61,40 +118,28 @@ export class BrandsService {
     }
   }
 
-  async update(id: number, updateBrandDto: UpdateBrandDto) {
+  // حذف برند بر اساس ID
+  async remove(identifier: string) {
     try {
-      const brandExisting = await this.findOne(id);
-      if (!brandExisting) {
-        throw new NotFoundException(`Brand with ID ${id} does not exist!`);
+      const isId = !isNaN(Number(identifier));
+      let brandExisting;
+
+      if (isId) {
+        brandExisting = await this.findOne(Number(identifier)); // جستجو بر اساس ID
+      } else {
+        brandExisting = await this.findOneBySlug(identifier); // جستجو بر اساس slug
       }
 
-      const updatedBrand = await this.prisma.brand.update({
-        where: { id },
-        data: updateBrandDto,
-      });
-
-      return {
-        message: 'Brand successfully updated!',
-        brand: updatedBrand,
-      };
-    } catch (error) {
-      this.handleError(error);
-    }
-  }
-
-  async remove(id: number) {
-    try {
-      const brandExisting = await this.findOne(id);
       if (!brandExisting) {
-        throw new NotFoundException(`Brand with ID ${id} does not exist!`);
+        throw new NotFoundException(`برندی با شناسه '${identifier}' پیدا نشد!`);
       }
 
       const brand = await this.prisma.brand.delete({
-        where: { id },
+        where: { id: brandExisting.id },
       });
 
       return {
-        message: 'Brand successfully deleted!',
+        message: 'برند با موفقیت حذف شد!',
         brand,
       };
     } catch (error) {
@@ -102,18 +147,40 @@ export class BrandsService {
     }
   }
 
-  // General error handler to manage different types of errors
+  // پیدا کردن برند با هر شناسه (ID یا slug)
+  async findBrandByIdentifier(identifier: string) {
+    try {
+      const isId = !isNaN(Number(identifier));
+      let brand;
+
+      if (isId) {
+        brand = await this.findOne(Number(identifier)); // جستجو بر اساس ID
+      } else {
+        brand = await this.findOneBySlug(identifier); // جستجو بر اساس slug
+      }
+
+      if (!brand) {
+        throw new NotFoundException(`برندی با شناسه '${identifier}' پیدا نشد!`);
+      }
+
+      return brand;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  // مدیریت خطاها
   private handleError(error: any) {
     if (error instanceof NotFoundException || error instanceof BadRequestException) {
-      throw error;  // Rethrow known exceptions
+      throw error;  // دوباره پرتاب کردن خطاهای شناخته‌شده
     }
 
-    if (error.code === 'P2002') { // Prisma unique constraint error code
-      throw new BadRequestException('A brand with this name already exists!');
+    if (error.code === 'P2002') { // کد خطای منحصر به فرد در Prisma
+      throw new BadRequestException('برندی با این نام قبلاً وجود دارد!');
     }
 
-    // For unknown errors, log and throw a generic error
+    // برای خطاهای ناشناخته، خطا را در کنسول ثبت کرده و یک خطای عمومی پرتاب می‌کنیم
     console.error(error);
-    throw new Error('An unexpected error occurred.');
+    throw new Error('یک خطای غیرمنتظره رخ داده است.');
   }
 }

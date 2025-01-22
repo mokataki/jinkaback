@@ -17,10 +17,11 @@ export class CategoriesController {
     return this.categoriesService.findAll();
   }
 
-  @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.categoriesService.findOne(id);
+  @Get(':identifier')
+  async findOne(@Param('identifier') identifier: string) {
+    return this.categoriesService.findCategoryByIdentifier(identifier); // Using string identifier
   }
+
   @Get(':parentId/children/:childId')
   async findChild(
       @Param('parentId', ParseIntPipe) parentId: number,
@@ -29,13 +30,16 @@ export class CategoriesController {
     return this.categoriesService.findChild(parentId, childId);
   }
 
-  @Patch(':id')
-  async update(@Param('id', ParseIntPipe) id: number, @Body() updateCategoryDto: UpdateCategoryDto) {
-    return this.categoriesService.update(id, updateCategoryDto);
+  @Patch(':identifier')
+  async update(
+      @Param('identifier') identifier: string, // Accept string identifier (could be ID or slug)
+      @Body() updateCategoryDto: UpdateCategoryDto,
+  ) {
+    return this.categoriesService.update(identifier, updateCategoryDto); // Passing string identifier
   }
 
-  @Delete(':id')
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.categoriesService.remove(id);
+  @Delete(':identifier')
+  async remove(@Param('identifier') identifier: string) { // Accept string identifier (could be ID or slug)
+    return this.categoriesService.remove(identifier); // Passing string identifier
   }
 }
